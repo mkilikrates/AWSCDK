@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 #config files
-.cfg
+*.cfg
 
 *.swp
 package-lock.json
