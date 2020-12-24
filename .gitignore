@@ -131,6 +131,9 @@ dmypy.json
 #config files
 *.cfg
 
+#context file
+cdk.context.json
+
 *.swp
 package-lock.json
 __pycache__
