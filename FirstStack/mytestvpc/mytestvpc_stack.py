@@ -12,7 +12,7 @@ from aws_cdk import (
 logger = logging.getLogger(__name__)
 vcpcidr = "10.0.0.0/16"
 vpcname = "Myvpcpythontest"
-region = os.environ["CDK_DEFAULT_REGION"]
+region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 tagName = core.CfnTag(key="Name", value=vpcname)
 vpcenv = "production"
 tagEnv = core.CfnTag(key="environment", value=vpcenv)
@@ -25,7 +25,7 @@ class MytestvpcStack(core.Stack):
         myvpc = ec2.Vpc(self,
             vpcname,
             cidr=vcpcidr,
-            max_azs=2,
+            max_azs=3,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,
@@ -143,7 +143,6 @@ class MytestvpcStack(core.Stack):
         )
         # set variables to be used
         mykey = "Fedorawrkst-" + region
-        myrole = 'EC2_Admin_Role'
         usrdatafile = 'bastion'
         usrdata = open(usrdatafile + ".cfg", "r").read()
         # create bastion host instance
@@ -216,5 +215,28 @@ class MytestvpcStack(core.Stack):
             "AllowDownscalingAtNight",
             schedule=asg.Schedule.cron(hour="20", minute="0"),
             desired_capacity=0
+        )
+        #create alb
+        myalb = elb.ApplicationLoadBalancer(
+            self,
+            "myALB",
+            vpc=myvpc,
+            internet_facing=True,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            security_group=bastionsg
+        )
+        # create listener
+        mylistnr = myalb.add_listener(
+            "Listener_http",
+            port=80,
+            protocol=elb.ApplicationProtocol.HTTP
+        )
+        # define asg
+        mylistnr.connections.allow_from(myalb,ec2.Port.tcp(80))
+        # associate listener to asg
+        mylistnr.add_targets(
+            "MyFleet from myasg",
+            port=80,
+            targets=[myasg]
         )
 
