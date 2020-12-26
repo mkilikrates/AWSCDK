@@ -5,4 +5,5 @@ aws_cdk.aws_autoscaling
 aws_cdk.aws_elasticloadbalancingv2
 aws_cdk.aws_logs
 aws_cdk.aws_cloudwatch
+aws_cdk.aws_elasticloadbalancingv2_targets
 -e .

@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_autoscaling as asg,
     aws_elasticloadbalancingv2 as elb,
+    aws_elasticloadbalancingv2_targets as targets,
     aws_logs as log,
     aws_cloudwatch as cw,
     core
@@ -125,7 +126,23 @@ class MytestvpcStack(core.Stack):
                         0,
                         myvpc.vpc_ipv6_cidr_blocks
                     ),
-                    len(myvpc.private_subnets) + len(myvpc.public_subnets),
+                    len(myvpc.private_subnets) + len(myvpc.public_subnets) + len(myvpc.isolated_subnets),
+                    "64"
+                )
+            )
+            subnet.node.add_dependency(ipv6_block)
+            i = i + 1
+        # Running again now for intercon subnets
+        for index, subnet in enumerate(myvpc.isolated_subnets):
+            assert isinstance(subnet.node.children[0], ec2.CfnSubnet)
+            subnet.node.children[0].ipv6_cidr_block = core.Fn.select(
+                i,
+                core.Fn.cidr(
+                    core.Fn.select(
+                        0,
+                        myvpc.vpc_ipv6_cidr_blocks
+                    ),
+                    len(myvpc.private_subnets) + len(myvpc.public_subnets) + len(myvpc.isolated_subnets),
                     "64"
                 )
             )
@@ -329,10 +346,22 @@ class MytestvpcStack(core.Stack):
             description="Allow from anyone on port 80"
         )
         # associate listener to asg
-        mylistnr.add_targets(
+        mytarget = mylistnr.add_targets(
             "MyFleet from myasg",
             port=80,
             targets=[myasg]
         )
-        
+        # https://github.com/aws/aws-cdk/issues/7153
+        #https://docs.aws.amazon.com/cdk/latest/guide/how_to_set_cw_alarm.html
+        myalarmtargrunhealth = mytarget.metric("UnHealthyHostCount")
+        mytarggrpalarm = cw.Alarm(
+            self,
+            "UnHealthyHostCount",
+            metric=myalarmtargrunhealth,
+            evaluation_periods=1,
+            threshold=0,
+            comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
+        )
+
+
 
