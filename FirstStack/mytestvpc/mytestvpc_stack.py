@@ -17,9 +17,6 @@ vcpcidr = "10.0.0.0/16"
 vpcname = "Myvpcpythontest"
 account=os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
-tagName = core.CfnTag(key="Name", value=vpcname)
-vpcenv = "production"
-tagEnv = core.CfnTag(key="environment", value=vpcenv)
 
 class MytestvpcStack(core.Stack):
 
