@@ -29,7 +29,7 @@ class MytestvpcStack(core.Stack):
         myvpc = ec2.Vpc(self,
             vpcname,
             cidr=vcpcidr,
-            max_azs=3,
+            max_azs=2,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,
@@ -46,14 +46,20 @@ class MytestvpcStack(core.Stack):
                     name="Intercon",
                     cidr_mask=24
                 )
-            ]
+            ],
+        )
+        core.Tags.of(myvpc).add(
+            'HZ','Z01605581DQRE479DIM1R',
+            apply_to_launched_instances=False,
+            include_resource_types=["AWS::EC2::VPC"]
         )
         core.CfnOutput(
             self,
             "vpc-id",
             value=myvpc.vpc_id
         )
-         # IPv6 is currently not supported by CDK.
+
+        # IPv6 is currently not supported by CDK.
         # This is done manually now, based on:
         # https://gist.github.com/milesjordan/d86942718f8d4dc20f9f331913e7367a
         ipv6_block = ec2.CfnVPCCidrBlock(self, "Ipv6",
@@ -130,6 +136,8 @@ class MytestvpcStack(core.Stack):
                     "64"
                 )
             )
+            subnet.node.children[0].add_deletion_override('Properties.MapPublicIpOnLaunch')
+            subnet.node.children[0].assign_ipv6_address_on_creation=True
             subnet.node.add_dependency(ipv6_block)
             i = i + 1
         # Running again now for intercon subnets
@@ -146,8 +154,16 @@ class MytestvpcStack(core.Stack):
                     "64"
                 )
             )
+            subnet.node.children[0].add_deletion_override('Properties.MapPublicIpOnLaunch')
+            subnet.node.children[0].assign_ipv6_address_on_creation=True
             subnet.node.add_dependency(ipv6_block)
             i = i + 1
+        # not use since I want to change agg_interval and format
+        #myvpc.add_flow_log(
+        #    'VpcFlowLogs',
+        #    destination=ec2.FlowLogDestination.to_cloud_watch_logs(),
+        #    traffic_type=ec2.FlowLogTrafficType.ALL,
+        #)
         # Log Group for Flow Logs
         myflowloggroup = log.LogGroup(
             self,
@@ -177,7 +193,7 @@ class MytestvpcStack(core.Stack):
         # Attach policy to Iam Role
         myflowlogrole.add_to_policy(myflowpolicy)
         # Create VPC Flow Log for VPC
-        myvpcflowlog = ec2.CfnFlowLog(
+        ec2.CfnFlowLog(
             self,
             "VpcFlowLogs",
             resource_id=myvpc.vpc_id,
@@ -240,7 +256,12 @@ class MytestvpcStack(core.Stack):
                 user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-            )
+            ),
+            instance_name='mybastion-' + region,
+        )
+        core.Tags.of(bastion).add(
+            'HZ','Z01605581DQRE479DIM1R,Z2A6HXO5ROTM57',
+            include_resource_types=["AWS::EC2::Instance"]
         )
         #https://pypi.org/project/aws-cdk.aws-iam/
         # add manageged policy
@@ -254,6 +275,69 @@ class MytestvpcStack(core.Stack):
             "Instance-ipv4",
             value=bastion.__getattribute__("instance_public_ip")
         )
+        # add S3 Gateway Endpoint to All Route Tables on VPC
+        myvpc.add_s3_endpoint(
+            'S3Endpoint',
+        )
+        # create security group for Interface VPC Endpoints
+        vpcesg = ec2.SecurityGroup(
+            self,
+            'MyVPCESG',
+            allow_all_outbound=True,
+            vpc=myvpc,
+        )
+        # add egress rule
+        ec2.CfnSecurityGroupEgress(
+            self,
+            "MyVPCEEgressAllIpv6",
+            ip_protocol="-1",
+            cidr_ipv6="::/0",
+            group_id=vpcesg.security_group_id
+        )
+        ec2.CfnSecurityGroupEgress(
+            self,
+            "MyVPCEEgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=vpcesg.security_group_id
+        )
+        # add ingress rule
+        ec2.CfnSecurityGroupIngress(
+            self,
+            "MyVPCEIngressVPCIpv6",
+            ip_protocol="-1",
+            cidr_ipv6=core.Fn.select(
+                0,
+                myvpc.vpc_ipv6_cidr_blocks
+            ),
+            group_id=vpcesg.security_group_id
+        )
+        ec2.CfnSecurityGroupIngress(
+            self,
+            "MyVPCEIngressVPCIpv4",
+            ip_protocol="-1",
+            cidr_ip=myvpc.vpc_cidr_block,
+            group_id=vpcesg.security_group_id
+        )
+
+        # add ssm interface Endpoint
+        # SSM
+        myvpc.add_interface_endpoint(
+            'SSMEndpoint',
+            service=ec2.InterfaceVpcEndpointAwsService('ssm'),
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.ISOLATED),
+            lookup_supported_azs=True,
+            security_groups=[vpcesg]
+        )
+        # EC2
+        myvpc.add_interface_endpoint(
+            'EC2Endpoint',
+            service=ec2.InterfaceVpcEndpointAwsService('ec2'),
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.ISOLATED),
+            lookup_supported_azs=True,
+            security_groups=[vpcesg]
+        )
+
         # set variables to be used on Auto Scale Group
         mykey = "mauranjo-" + region
         usrdatafile = 'simple_nginx'
@@ -303,7 +387,8 @@ class MytestvpcStack(core.Stack):
             desired_capacity=2,
             min_capacity=0,
             max_capacity=2,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE)
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE),
+
         )
         myasg.scale_on_schedule(
             "PrescaleInTheMorning",
@@ -354,7 +439,7 @@ class MytestvpcStack(core.Stack):
         # https://github.com/aws/aws-cdk/issues/7153
         #https://docs.aws.amazon.com/cdk/latest/guide/how_to_set_cw_alarm.html
         myalarmtargrunhealth = mytarget.metric("UnHealthyHostCount")
-        mytarggrpalarm = cw.Alarm(
+        cw.Alarm(
             self,
             "UnHealthyHostCount",
             metric=myalarmtargrunhealth,
