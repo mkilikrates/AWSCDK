@@ -3,11 +3,13 @@ import os
 
 from aws_cdk import core
 
-from mytestvpc.mytestvpc_stack import MytestvpcStack
+from vpc_frugal.vpc_frugal_stack import VpcFrugalStack
 
 
 app = core.App()
-MytestvpcStack(app, "mytestvpc", 
+VpcFrugalStack(
+    app,
+    "vpc-frugal",
     env=core.Environment(
         account=os.environ.get(
             "CDK_DEPLOY_ACCOUNT",

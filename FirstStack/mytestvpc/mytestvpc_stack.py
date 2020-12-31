@@ -7,7 +7,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_autoscaling as asg,
     aws_elasticloadbalancingv2 as elb,
-    aws_elasticloadbalancingv2_targets as targets,
+    aws_elasticloadbalancingv2_targets as lbtargets,
     aws_logs as log,
     aws_cloudwatch as cw,
     core
@@ -444,6 +444,7 @@ class MytestvpcStack(core.Stack):
             threshold=0,
             comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
         )
+
 
 
 
