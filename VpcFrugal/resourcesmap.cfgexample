@@ -1,0 +1,7 @@
+{  "Mappings": {
+    "Resources": {
+      "bastion": {"NAME" : "bastion", "KEY": "mykey-", "TAGS": [ { "HZ" : "ABC123456"}, { "Role" : "proxy" } ], "USRFILE" : "bastion.cfg", "SIZE" : "t3.micro" },
+      "vpc": {"NAME" : "myvpc", "TAGS": [ { "HZ" : "ABC123456"}, { "Env" : "staging" } ] }
+    }
+  }
+}

@@ -15,6 +15,11 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 vpcconf = "vpcmap.cfg"
 resconf = "resourcesmap.cfg"
+cidrid = 0
+with open(resconf) as resfile:
+    resmap = json.load(resfile)
+with open('zonemap.cfg') as zonefile:
+    zonemap = json.load(zonefile)
 
 class VpcFrugalStack(core.Stack):
 
@@ -115,9 +120,7 @@ class VpcFrugalStack(core.Stack):
         )
         # get parameters from cfg file
         # get prefix list from file to allow traffic from the office
-        with open(vpcconf) as vpcfile:
-            vpcmap = json.load(vpcfile)
-            vcpcidr = vpcmap['Mappings']['RegionMap'][region]['CIDR']
+        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][cidrid]
 
         # create vpc without nat-gateways
         myvpc = ec2.Vpc(self,
@@ -140,6 +143,11 @@ class VpcFrugalStack(core.Stack):
         )
         myvpc.node.add_dependency(myec2rule)
         myvpc.node.add_dependency(myvpcrule)
+        # Tags for VPC
+        res = 'vpc'
+        for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
+            for k,v in tagsmap.items():
+                core.Tags.of(myvpc).add(k,v,apply_to_launched_instances=False,include_resource_types=["AWS::EC2::VPC"])
         # Log Group for Flow Logs
         myflowloggroup = log.LogGroup(
             self,
@@ -226,10 +234,8 @@ class VpcFrugalStack(core.Stack):
             security_groups=[vpcesg]
         )
         # get prefix list from file to allow traffic from the office
-        with open('zonemap.cfg') as zonefile:
-            zonemap = json.load(zonefile)
-            srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']
-            vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
+        srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']
+        vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
         # create prefix list for RFC1918
         mynet10rfc1918 = ec2.CfnPrefixList.EntryProperty(
             cidr='10.0.0.0/8',
@@ -287,14 +293,12 @@ class VpcFrugalStack(core.Stack):
             group_id=bastionsg.security_group_id
         )
         # get data for bastion resource
-        with open(resconf) as resfile:
-            res = 'bastion'
-            resmap = json.load(resfile)
-            resname = resmap['Mappings']['Resources'][res]['NAME']
-            ressize = resmap['Mappings']['Resources'][res]['SIZE']
-            mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
-            usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
-            usrdata = open(usrdatafile, "r").read()
+        res = 'bastion'
+        resname = resmap['Mappings']['Resources'][res]['NAME']
+        ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+        usrdata = open(usrdatafile, "r").read()
         # create bastion host instance
         bastion = ec2.BastionHostLinux(
             self,
@@ -310,6 +314,10 @@ class VpcFrugalStack(core.Stack):
             ),
             instance_name=resname + region,
         )
+        # add tags
+        for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
+            for k,v in tagsmap.items():
+                core.Tags.of(bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
         # add my key
         bastion.instance.instance.add_property_override("KeyName", mykey)
         # create transit gateway

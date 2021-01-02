@@ -1,0 +1,25 @@
+#!/bin/bash -xe
+echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config
+echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config
+systemctl restart sshd.service
+amazon-linux-extras install -y epel
+yum install -y tcpdump whois nuttcp iperf3 hping3 nmap sipcalc mtr bind-utils telnet tinyproxy git
+sed -i '/^Allow 127\.0\.0\.1/a Allow 10\.0\.0\.0\/8' /etc/tinyproxy/tinyproxy.conf
+sed -i '/^Allow 127\.0\.0\.1/a Allow 172\.16\.0\.0\/12' /etc/tinyproxy/tinyproxy.conf
+sed -i '/^Allow 127\.0\.0\.1/a Allow 100\.64\.0\.0\/10' /etc/tinyproxy/tinyproxy.conf
+systemctl enable tinyproxy.service
+systemctl restart tinyproxy.service
+yum update -y
+git clone https://github.com/pyenv/pyenv.git /home/ec2-user/.pyenv
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> /home/ec2-user/.bashrc
+export PYENV_ROOT="/home/ec2-user/.pyenv"
+echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> /home/ec2-user/.bashrc
+export PATH="$PYENV_ROOT/bin:$PATH"
+echo 'eval "$(pyenv init -)"' >> /home/ec2-user/.bashrc
+eval "$(pyenv init -)"
+pyenv install 3.8.6
+pyenv global 3.8.6
+pip install pip --upgrade
+pip install boto3
+chown -R ec2-user /home/ec2-user/.pyenv
+reboot
