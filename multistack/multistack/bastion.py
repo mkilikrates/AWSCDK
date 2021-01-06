@@ -65,10 +65,18 @@ class bastionv4(core.Stack):
                 core.Tags.of(self.bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
         # add my key
         self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        # output
         core.CfnOutput(
             self,
-            "MyBastion-ipv4",
-            value=self.bastion.__getattribute__("instance_public_ip")
+            "bastion-sg",
+            value=self.bastionsg.security_group_id,
+            export_name="bastion-sg"
+        )
+        core.CfnOutput(
+            self,
+            "bastion-ipv4",
+            value=self.bastion.__getattribute__("instance_public_ip"),
+            export_name="bastion-ipv4"
         )
 
 class bastionv6(core.Stack):
@@ -133,6 +141,19 @@ class bastionv6(core.Stack):
         self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)
         core.CfnOutput(
             self,
-            "MyBastion-ipv4",
-            value=self.bastion.__getattribute__("instance_public_ip")
+            "bastion",
+            value=self.bastion.instance_id,
+            export_name="bastion"
+        )
+        core.CfnOutput(
+            self,
+            "bastion-sg",
+            value=self.bastionsg.security_group_id,
+            export_name="bastion-sg"
+        )
+        core.CfnOutput(
+            self,
+            "bastion-ipv4",
+            value=self.bastion.__getattribute__("instance_public_ip"),
+            export_name="bastion-ipv4"
         )
