@@ -98,12 +98,12 @@ class vpcebasicv4(core.Stack):
             security_groups=[self.vpcesg]
         )
 
-
 class vpcebasicv6(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.vpcstack = vpcstack
         # create security group for Interface VPC Endpoints
         self.vpcesg = ec2.SecurityGroup(
             self,
@@ -120,14 +120,15 @@ class vpcebasicv6(core.Stack):
             cidr_ip=self.vpc.vpc_cidr_block,
             group_id=self.vpcesg.security_group_id
         )
+        # can not use self.vpc.vpc_ipv6_cidr_blocks because this is not exported properly
+        cidrv6 = core.Fn.import_value(
+            f"{self.vpcstack}:vpccidrv6"
+        )
         ec2.CfnSecurityGroupIngress(
             self,
             "MyVPCEIngressVPCIpv6",
             ip_protocol="-1",
-            cidr_ipv6=core.Fn.select(
-                0,
-                self.vpc.vpc_ipv6_cidr_blocks
-            ),
+            cidr_ipv6=cidrv6,
             group_id=self.vpcesg.security_group_id
         )
         # egress rule
@@ -206,4 +207,3 @@ class vpcebasicv6(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
-

@@ -48,19 +48,19 @@ class VPCv4(core.Stack):
         self,
         "vpc-id",
         value=self.vpc.vpc_id,
-        export_name="vpc-id"
+        #export_name="vpc-id"
         )
         core.CfnOutput(
         self,
         "vpc-cidr",
         value=self.vpc.vpc_cidr_block,
-        export_name="vpc-cidr"
+        #export_name="vpc-cidr"
         )
         core.CfnOutput(
         self,
         "vpc-defaultsg",
         value=self.vpc.vpc_default_security_group,
-        export_name="vpc-defaultsg"
+        #export_name="vpc-defaultsg"
         )
 
 class VPCv4nonatgw(core.Stack):
@@ -91,19 +91,19 @@ class VPCv4nonatgw(core.Stack):
         self,
         "vpc-id",
         value=self.vpc.vpc_id,
-        export_name="vpc-id"
+        #export_name="vpc-id"
         )
         core.CfnOutput(
         self,
         "vpc-cidr",
         value=self.vpc.vpc_cidr_block,
-        export_name="vpc-cidr"
+        #export_name="vpc-cidr"
         )
         core.CfnOutput(
         self,
         "vpc-defaultsg",
         value=self.vpc.vpc_default_security_group,
-        export_name="vpc-defaultsg"
+        #export_name="vpc-defaultsg"
         )
 
 class VPCv6(core.Stack):
@@ -238,12 +238,12 @@ class VPCv6(core.Stack):
         )
         core.CfnOutput(
             self,
-            "vpccidrv6",
+            f"{construct_id}:vpccidrv6",
             value=core.Fn.select(
                 0,
                 self.vpc.vpc_ipv6_cidr_blocks
             ),
-            export_name="vpccidrv6"
+            export_name=f"{construct_id}:vpccidrv6",
         )
         core.CfnOutput(
             self,
@@ -251,6 +251,7 @@ class VPCv6(core.Stack):
             value=self.vpc.vpc_default_security_group,
             export_name="vpcdefaultsg"
         )
+
 
 class VPCv6nonatgw(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
@@ -369,27 +370,27 @@ class VPCv6nonatgw(core.Stack):
             self,
             "vpcId",
             value=self.vpc.vpc_id,
-            export_name="vpcId"
+            #export_name="vpcId"
         )
         core.CfnOutput(
             self,
             "vpccidr",
             value=self.vpc.vpc_cidr_block,
-            export_name="vpccidr"
+            #export_name="vpccidr"
         )
         core.CfnOutput(
             self,
-            "vpccidrv6",
+            f"{construct_id}:vpccidrv6",
             value=core.Fn.select(
                 0,
                 self.vpc.vpc_ipv6_cidr_blocks
             ),
-            export_name="vpccidrv6"
+            export_name=f"{construct_id}:vpccidrv6",
         )
         core.CfnOutput(
             self,
             "vpcdefaultsg",
             value=self.vpc.vpc_default_security_group,
-            export_name="vpcdefaultsg"
+            #export_name="vpcdefaultsg"
         )
 
