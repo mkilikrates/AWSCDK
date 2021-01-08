@@ -207,3 +207,7 @@ class vpcebasicv6(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
+        # S3
+        #ec2.GatewayVpcEndpointAwsService(
+            
+        #)

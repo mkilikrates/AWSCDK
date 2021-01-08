@@ -8,24 +8,26 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 vpcconf = "vpcmap.cfg"
 resconf = "resourcesmap.cfg"
-cidrid = 0
-natgw = 1
 with open(resconf) as resfile:
     resmap = json.load(resfile)
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class VPCv4(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.cidrid = int(cidrid)
+        self.natgw = int(natgw)
+        self.maxaz = int(maxaz)
         # get prefix list from file to allow traffic from the office
-        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][cidrid]
+        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
             f"" + region + "-vpc",
             cidr=vcpcidr,
-            max_azs=2,
-            nat_gateways=natgw,
+            max_azs=self.maxaz,
+            nat_gateways=self.natgw,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,
@@ -64,16 +66,20 @@ class VPCv4(core.Stack):
         )
 
 class VPCv4nonatgw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.cidrid = int(cidrid)
+        self.natgw = int(natgw)
+        self.maxaz = int(maxaz)
         # get prefix list from file to allow traffic from the office
-        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][cidrid]
+        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
             f"" + region + "-vpc",
             cidr=vcpcidr,
-            max_azs=2,
-            nat_gateways=0,
+            max_azs=self.maxaz,
+            nat_gateways=self.natgw,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,
@@ -107,16 +113,20 @@ class VPCv4nonatgw(core.Stack):
         )
 
 class VPCv6(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.cidrid = int(cidrid)
+        self.natgw = int(natgw)
+        self.maxaz = int(maxaz)
         # get prefix list from file to allow traffic from the office
-        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][cidrid]
+        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
             f"" + region + "-vpc",
             cidr=vcpcidr,
-            max_azs=2,
-            nat_gateways=natgw,
+            max_azs=self.maxaz,
+            nat_gateways=self.natgw,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,
@@ -254,16 +264,20 @@ class VPCv6(core.Stack):
 
 
 class VPCv6nonatgw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.cidrid = int(cidrid)
+        self.natgw = int(natgw)
+        self.maxaz = int(maxaz)
         # get prefix list from file to allow traffic from the office
-        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][cidrid]
+        vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
             f"" + region + "-vpc",
             cidr=vcpcidr,
-            max_azs=2,
-            nat_gateways=0,
+            max_azs=self.maxaz,
+            nat_gateways=self.natgw,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     subnet_type=ec2.SubnetType.PUBLIC,

@@ -24,7 +24,7 @@ class bastionv4(core.Stack):
         # create security group for bastion
         self.bastionsg = ec2.SecurityGroup(
             self,
-            'MyBastionSG',
+            f"{construct_id}SG",
             allow_all_outbound=True,
             vpc=self.vpc
         )
@@ -41,17 +41,21 @@ class bastionv4(core.Stack):
         res = 'bastion'
         resname = resmap['Mappings']['Resources'][res]['NAME']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        resclass = resmap['Mappings']['Resources'][res]['CLASS']
         mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         usrdata = open(usrdatafile, "r").read()
         # create bastion host instance
         self.bastion = ec2.BastionHostLinux(
             self,
-            'MyBastion',
+            f"{construct_id}",
             vpc=self.vpc,
             security_group=self.bastionsg,
             subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-            instance_type=ec2.InstanceType(ressize),
+            instance_type=ec2.InstanceType.of(
+                instance_class=ec2.InstanceClass(resclass),
+                instance_size=ec2.InstanceSize(ressize)
+            ),
             machine_image=ec2.AmazonLinuxImage(
                 user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
@@ -68,15 +72,21 @@ class bastionv4(core.Stack):
         # output
         core.CfnOutput(
             self,
-            "bastion-sg",
-            value=self.bastionsg.security_group_id,
-            export_name="bastion-sg"
+            f"{construct_id}:id",
+            value=self.bastion.instance_id,
+            export_name=f"{construct_id}:id"
         )
         core.CfnOutput(
             self,
-            "bastion-ipv4",
+            f"{construct_id}:sg",
+            value=self.bastionsg.security_group_id,
+            export_name=f"{construct_id}:sg"
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:ipv4",
             value=self.bastion.__getattribute__("instance_public_ip"),
-            export_name="bastion-ipv4"
+            export_name=f"{construct_id}:ipv4"
         )
 
 class bastionv6(core.Stack):
@@ -89,14 +99,14 @@ class bastionv6(core.Stack):
         # create security group for bastion
         self.bastionsg = ec2.SecurityGroup(
             self,
-            'MyBastionSG',
+            f"{construct_id}SG",
             allow_all_outbound=True,
             vpc=self.vpc
         )
         # add egress rule
         ec2.CfnSecurityGroupEgress(
             self,
-            "BastionEgressAllIpv6",
+            f"{construct_id}EgressAllIpv6",
             ip_protocol="-1",
             cidr_ipv6="::/0",
             group_id=self.bastionsg.security_group_id
@@ -114,17 +124,21 @@ class bastionv6(core.Stack):
         res = 'bastion'
         resname = resmap['Mappings']['Resources'][res]['NAME']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        resclass = resmap['Mappings']['Resources'][res]['CLASS']
         mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         usrdata = open(usrdatafile, "r").read()
         # create bastion host instance
         self.bastion = ec2.BastionHostLinux(
             self,
-            'MyBastion',
+            f"{construct_id}",
             vpc=self.vpc,
             security_group=self.bastionsg,
             subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-            instance_type=ec2.InstanceType(ressize),
+            instance_type=ec2.InstanceType.of(
+                instance_class=ec2.InstanceClass(resclass),
+                instance_size=ec2.InstanceSize(ressize)
+            ),
             machine_image=ec2.AmazonLinuxImage(
                 user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
@@ -141,19 +155,19 @@ class bastionv6(core.Stack):
         self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)
         core.CfnOutput(
             self,
-            "bastion",
+            f"{construct_id}:id",
             value=self.bastion.instance_id,
-            export_name="bastion"
+            export_name=f"{construct_id}:id"
         )
         core.CfnOutput(
             self,
-            "bastion-sg",
+            f"{construct_id}:sg",
             value=self.bastionsg.security_group_id,
-            export_name="bastion-sg"
+            export_name=f"{construct_id}:sg"
         )
         core.CfnOutput(
             self,
-            "bastion-ipv4",
+            f"{construct_id}:ipv4",
             value=self.bastion.__getattribute__("instance_public_ip"),
-            export_name="bastion-ipv4"
+            export_name=f"{construct_id}:ipv4"
         )
