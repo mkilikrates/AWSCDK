@@ -47,22 +47,22 @@ class VPCv4(core.Stack):
             ]
         )
         core.CfnOutput(
-        self,
-        "vpc-id",
-        value=self.vpc.vpc_id,
-        #export_name="vpc-id"
+            self,
+            f"{construct_id}:vpcId",
+            value=self.vpc.vpc_id,
+            export_name=f"{construct_id}:vpcId"
         )
         core.CfnOutput(
-        self,
-        "vpc-cidr",
-        value=self.vpc.vpc_cidr_block,
-        #export_name="vpc-cidr"
+            self,
+            f"{construct_id}:vpccidr",
+            value=self.vpc.vpc_cidr_block,
+            export_name=f"{construct_id}:vpccidr"
         )
         core.CfnOutput(
-        self,
-        "vpc-defaultsg",
-        value=self.vpc.vpc_default_security_group,
-        #export_name="vpc-defaultsg"
+            self,
+            f"{construct_id}:vpcdefaultsg",
+            value=self.vpc.vpc_default_security_group,
+            export_name=f"{construct_id}:vpcdefaultsg"
         )
 
 class VPCv4nonatgw(core.Stack):
@@ -94,22 +94,22 @@ class VPCv4nonatgw(core.Stack):
             ]
         )
         core.CfnOutput(
-        self,
-        "vpc-id",
-        value=self.vpc.vpc_id,
-        #export_name="vpc-id"
+            self,
+            f"{construct_id}:vpcId",
+            value=self.vpc.vpc_id,
+            export_name=f"{construct_id}:vpcId"
         )
         core.CfnOutput(
-        self,
-        "vpc-cidr",
-        value=self.vpc.vpc_cidr_block,
-        #export_name="vpc-cidr"
+            self,
+            f"{construct_id}:vpccidr",
+            value=self.vpc.vpc_cidr_block,
+            export_name=f"{construct_id}:vpccidr"
         )
         core.CfnOutput(
-        self,
-        "vpc-defaultsg",
-        value=self.vpc.vpc_default_security_group,
-        #export_name="vpc-defaultsg"
+            self,
+            f"{construct_id}:vpcdefaultsg",
+            value=self.vpc.vpc_default_security_group,
+            export_name=f"{construct_id}:vpcdefaultsg"
         )
 
 class VPCv6(core.Stack):
@@ -236,15 +236,15 @@ class VPCv6(core.Stack):
             i = i + 1
         core.CfnOutput(
             self,
-            "vpcId",
+            f"{construct_id}:vpcId",
             value=self.vpc.vpc_id,
-            export_name="vpcId"
+            export_name=f"{construct_id}:vpcId"
         )
         core.CfnOutput(
             self,
-            "vpccidr",
+            f"{construct_id}:vpccidr",
             value=self.vpc.vpc_cidr_block,
-            export_name="vpccidr"
+            export_name=f"{construct_id}:vpccidr"
         )
         core.CfnOutput(
             self,
@@ -257,9 +257,9 @@ class VPCv6(core.Stack):
         )
         core.CfnOutput(
             self,
-            "vpcdefaultsg",
+            f"{construct_id}:vpcdefaultsg",
             value=self.vpc.vpc_default_security_group,
-            export_name="vpcdefaultsg"
+            export_name=f"{construct_id}:vpcdefaultsg"
         )
 
 
@@ -382,15 +382,15 @@ class VPCv6nonatgw(core.Stack):
             i = i + 1
         core.CfnOutput(
             self,
-            "vpcId",
+            f"{construct_id}:vpcId",
             value=self.vpc.vpc_id,
-            #export_name="vpcId"
+            export_name=f"{construct_id}:vpcId"
         )
         core.CfnOutput(
             self,
-            "vpccidr",
+            f"{construct_id}:vpccidr",
             value=self.vpc.vpc_cidr_block,
-            #export_name="vpccidr"
+            export_name=f"{construct_id}:vpccidr"
         )
         core.CfnOutput(
             self,
@@ -403,8 +403,8 @@ class VPCv6nonatgw(core.Stack):
         )
         core.CfnOutput(
             self,
-            "vpcdefaultsg",
+            f"{construct_id}:vpcdefaultsg",
             value=self.vpc.vpc_default_security_group,
-            #export_name="vpcdefaultsg"
+            export_name=f"{construct_id}:vpcdefaultsg"
         )
 

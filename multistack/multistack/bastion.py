@@ -28,6 +28,14 @@ class bastionv4(core.Stack):
             allow_all_outbound=True,
             vpc=self.vpc
         )
+        # add egress rule
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}EgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.bastionsg.security_group_id
+        )
          # add ingress rules
         self.bastionsg.add_ingress_rule(
             ec2.Peer.prefix_list(srcprefix),
@@ -104,6 +112,13 @@ class bastionv6(core.Stack):
             vpc=self.vpc
         )
         # add egress rule
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}EgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.bastionsg.security_group_id
+        )
         ec2.CfnSecurityGroupEgress(
             self,
             f"{construct_id}EgressAllIpv6",

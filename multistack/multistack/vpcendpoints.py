@@ -8,14 +8,15 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 
 class vpcebasicv4(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.vpcstack = vpcstack
         # create security group for Interface VPC Endpoints
         self.vpcesg = ec2.SecurityGroup(
             self,
-            'VPCEsg',
+            f"{construct_id}:VPCEsg",
             vpc=self.vpc,
             allow_all_outbound=True,
             description='security group for Interface VPC Endpoints'
@@ -40,7 +41,7 @@ class vpcebasicv4(core.Stack):
         # SSM
         ec2.InterfaceVpcEndpoint(
             self,
-            'SSMEndpoint',
+            f"{construct_id}:SSMEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.SSM,
             subnets=ec2.SubnetSelection(
@@ -52,7 +53,7 @@ class vpcebasicv4(core.Stack):
         #EC2
         ec2.InterfaceVpcEndpoint(
             self,
-            'EC2Endpoint',
+            f"{construct_id}:EC2Endpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.EC2,
             subnets=ec2.SubnetSelection(
@@ -64,7 +65,7 @@ class vpcebasicv4(core.Stack):
         #LOG
         ec2.InterfaceVpcEndpoint(
             self,
-            'LogsEndpoint',
+            f"{construct_id}:LogsEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
             subnets=ec2.SubnetSelection(
@@ -76,7 +77,7 @@ class vpcebasicv4(core.Stack):
         #EVENTS
         ec2.InterfaceVpcEndpoint(
             self,
-            'EventsEndpoint',
+            f"{construct_id}:EventsEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_EVENTS,
             subnets=ec2.SubnetSelection(
@@ -88,7 +89,7 @@ class vpcebasicv4(core.Stack):
         #MONITORING
         ec2.InterfaceVpcEndpoint(
             self,
-            'MonitoringEndpoint',
+            f"{construct_id}:MonitoringEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH,
             subnets=ec2.SubnetSelection(
@@ -97,6 +98,14 @@ class vpcebasicv4(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
+        #S3
+        ec2.GatewayVpcEndpoint(
+            self,
+            f"{construct_id}:S3Endpoint",
+            vpc=self.vpc,
+            service=ec2.GatewayVpcEndpointAwsService.S3,
+        )
+
 
 class vpcebasicv6(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
@@ -107,7 +116,7 @@ class vpcebasicv6(core.Stack):
         # create security group for Interface VPC Endpoints
         self.vpcesg = ec2.SecurityGroup(
             self,
-            'VPCEsg',
+            f"{construct_id}:VPCEsg",
             vpc=self.vpc,
             allow_all_outbound=True,
             description='security group for Interface VPC Endpoints'
@@ -150,7 +159,7 @@ class vpcebasicv6(core.Stack):
         # SSM
         ec2.InterfaceVpcEndpoint(
             self,
-            'SSMEndpoint',
+            f"{construct_id}:SSMEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.SSM,
             subnets=ec2.SubnetSelection(
@@ -162,7 +171,7 @@ class vpcebasicv6(core.Stack):
         #EC2
         ec2.InterfaceVpcEndpoint(
             self,
-            'EC2Endpoint',
+            f"{construct_id}:EC2Endpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.EC2,
             subnets=ec2.SubnetSelection(
@@ -174,7 +183,7 @@ class vpcebasicv6(core.Stack):
         #LOG
         ec2.InterfaceVpcEndpoint(
             self,
-            'LogsEndpoint',
+            f"{construct_id}:LogsEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
             subnets=ec2.SubnetSelection(
@@ -186,7 +195,7 @@ class vpcebasicv6(core.Stack):
         #EVENTS
         ec2.InterfaceVpcEndpoint(
             self,
-            'EventsEndpoint',
+            f"{construct_id}:EventsEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_EVENTS,
             subnets=ec2.SubnetSelection(
@@ -198,7 +207,7 @@ class vpcebasicv6(core.Stack):
         #MONITORING
         ec2.InterfaceVpcEndpoint(
             self,
-            'MonitoringEndpoint',
+            f"{construct_id}:MonitoringEndpoint",
             vpc=self.vpc,
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH,
             subnets=ec2.SubnetSelection(
@@ -207,7 +216,10 @@ class vpcebasicv6(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
-        # S3
-        #ec2.GatewayVpcEndpointAwsService(
-            
-        #)
+        #S3
+        ec2.GatewayVpcEndpoint(
+            self,
+            f"{construct_id}:S3Endpoint",
+            vpc=self.vpc,
+            service=ec2.GatewayVpcEndpointAwsService.S3,
+        )
