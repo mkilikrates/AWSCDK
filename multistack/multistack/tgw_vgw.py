@@ -565,3 +565,66 @@ class attachtgwv6(core.Stack):
                 destination_cidr_block='192.168.0.0/16',
                 transit_gateway_id=self.tgw.ref
             ).add_depends_on(self.tgwattch)
+
+class vgwv4(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.vpc = vpc
+        self.bastionsg = bastionsg
+        # get prefix list from file to allow traffic from the office
+        vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
+        # create prefix list for RFC1918
+        mynet10rfc1918 = ec2.CfnPrefixList.EntryProperty(
+            cidr='10.0.0.0/8',
+            description='Network 10.0.0.0/8 from RFC1918'
+        )
+        mynet172rfc1918 = ec2.CfnPrefixList.EntryProperty(
+            cidr='172.16.0.0/12',
+            description='Network 172.16.0.0/12 from RFC1918'
+        )
+        mynet192rfc1918 = ec2.CfnPrefixList.EntryProperty(
+            cidr='192.168.0.0/16',
+            description='Network 192.168.0.0/16 from RFC1918'
+        )
+        myrfc1918 = ec2.CfnPrefixList(
+            self,
+            id=f"pl-rfc1918" + region,
+            address_family='IPv4',
+            max_entries=5,
+            prefix_list_name=f"pl-rfc1918" + region,
+            entries=[
+                mynet10rfc1918,
+                mynet172rfc1918,
+                mynet192rfc1918
+            ]
+        )
+        # allow traffic from RFC1918 to make tests from bastion
+        ec2.CfnSecurityGroupIngress(
+            self,
+            "MyBastionIngress10",
+            ip_protocol="-1",
+            source_prefix_list_id=myrfc1918.ref,
+            group_id=bastionsg.security_group_id
+        )
+        # create Virtual private gateway
+        self.vgw = ec2.VpnGateway(
+            self,
+            f"{construct_id}:vgw",
+            type='ipsec.1',
+            amazon_side_asn=vgasn,
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:vgwId",
+            value=self.vgw.gateway_id,
+            export_name=f"{construct_id}:vgwId"
+        )
+
+        # attach VGW to VPC
+        ec2.CfnVPCGatewayAttachment(
+            self,
+            f"{construct_id}:vgw-att",
+            vpc_id=self.vpc.vpc_id,
+            vpn_gateway_id=self.vgw.gateway_id
+        )

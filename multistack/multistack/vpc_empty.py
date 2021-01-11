@@ -24,7 +24,7 @@ class VPCv4(core.Stack):
         vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
-            f"" + region + "-vpc",
+            f"{construct_id}:vpc",
             cidr=vcpcidr,
             max_azs=self.maxaz,
             nat_gateways=self.natgw,
@@ -76,7 +76,7 @@ class VPCv4nonatgw(core.Stack):
         vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         # create simple vpc
         self.vpc = ec2.Vpc(self,
-            f"" + region + "-vpc",
+            f"{construct_id}:vpc",
             cidr=vcpcidr,
             max_azs=self.maxaz,
             nat_gateways=self.natgw,
