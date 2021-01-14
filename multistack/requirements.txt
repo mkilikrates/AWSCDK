@@ -8,4 +8,7 @@ aws_cdk.aws_elasticloadbalancingv2_targets
 aws_cdk.aws_cloudwatch
 aws-cdk.aws-rds
 aws_cdk.aws_ssm
+aws_cdk.aws_certificatemanager
+aws_cdk.aws_route53
+aws_cdk.aws_route53_targets
 -e .

@@ -6,6 +6,9 @@ from aws_cdk import (
     aws_elasticloadbalancingv2 as elb,
     aws_elasticloadbalancingv2_targets as lbtargets,
     aws_cloudwatch as cw,
+    aws_certificatemanager as acm,
+    aws_route53 as r53,
+    aws_route53_targets as r53tgs,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -90,7 +93,7 @@ class asgalbpublicv6(core.Stack):
             vpc=self.vpc,
             internet_facing=True,
             ip_address_type=elb.IpAddressType("DUAL_STACK"),
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC,one_per_az=True)
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC,one_per_az=True),
         )
         core.CfnOutput(
             self,
@@ -99,12 +102,35 @@ class asgalbpublicv6(core.Stack):
         )
         # get config for resource
         res = 'alb'
-        certarn = resmap['Mappings']['Resources'][res]['CERTARN']
+        appname = resmap['Mappings']['Resources'][res]['NAME']
+        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+        # get hosted zone id
+        self.hz = r53.HostedZone.from_lookup(
+            self,
+            f"{construct_id}:Domain",
+            domain_name=appdomain,
+            private_zone=False
+        )
+        r53.ARecord(
+            self,
+            f"{construct_id}:fqdn",
+            zone=self.hz,
+            record_name=f"{appname}.{appdomain}",
+            target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.alb))
+        )
+        # generate public certificate
+        self.cert = acm.Certificate(
+            self,
+            f"{construct_id}:Certificate",
+            domain_name=f"{appname}.{appdomain}",
+            validation=acm.CertificateValidation.from_dns(self.hz)
+        )
+        # configure listener
         self.elblistnrs = self.alb.add_listener(
             f"{construct_id}:Listener_https",
             port=443,
             protocol=elb.ApplicationProtocol.HTTPS,
-            certificate_arns=[certarn]
+            certificate_arns=[self.cert.certificate_arn]
         )
         #redir http traffic to https
         self.alb.add_redirect(
@@ -203,8 +229,8 @@ class asgalbpublicv4(core.Stack):
             f"{construct_id}:myALB",
             vpc=self.vpc,
             internet_facing=True,
-            ip_address_type=elb.IpAddressType("IPV4"),
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC,one_per_az=True)
+            ip_address_type=elb.IpAddressType("IPv4"),
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC,one_per_az=True),
         )
         core.CfnOutput(
             self,
@@ -213,12 +239,35 @@ class asgalbpublicv4(core.Stack):
         )
         # get config for resource
         res = 'alb'
-        certarn = resmap['Mappings']['Resources'][res]['CERTARN']
+        appname = resmap['Mappings']['Resources'][res]['NAME']
+        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+        # get hosted zone id
+        self.hz = r53.HostedZone.from_lookup(
+            self,
+            f"{construct_id}:Domain",
+            domain_name=appdomain,
+            private_zone=False
+        )
+        r53.ARecord(
+            self,
+            f"{construct_id}:fqdn",
+            zone=self.hz,
+            record_name=f"{appname}.{appdomain}",
+            target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.alb))
+        )
+        # generate public certificate
+        self.cert = acm.Certificate(
+            self,
+            f"{construct_id}:Certificate",
+            domain_name=f"{appname}.{appdomain}",
+            validation=acm.CertificateValidation.from_dns(self.hz)
+        )
+        # configure listener
         self.elblistnrs = self.alb.add_listener(
             f"{construct_id}:Listener_https",
             port=443,
             protocol=elb.ApplicationProtocol.HTTPS,
-            certificate_arns=[certarn]
+            certificate_arns=[self.cert.certificate_arn]
         )
         #redir http traffic to https
         self.alb.add_redirect(
@@ -251,7 +300,6 @@ class asgalbpublicv4(core.Stack):
             threshold=0,
             comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
         )
-
 class asgalbprivate(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)

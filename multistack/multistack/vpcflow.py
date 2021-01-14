@@ -16,7 +16,7 @@ class flowlogs(core.Stack):
         # Log Group for Flow Logs
         self.flowloggroup = log.LogGroup(
             self,
-            "FlowLogsGroup",
+            f"{construct_id}:FlowLogsGroup",
             retention=log.RetentionDays.ONE_WEEK
         )
         self.flowpolicy = iam.PolicyStatement(
@@ -34,7 +34,7 @@ class flowlogs(core.Stack):
         # Iam Role
         self.flowlogrole = iam.Role(
             self,
-            "FlowLogsRole",
+            f"{construct_id}:FlowLogsRole",
             assumed_by=iam.ServicePrincipal('vpc-flow-logs.amazonaws.com'),
             description="Role for Delivery VPC Flow Logs",
         )
@@ -43,7 +43,7 @@ class flowlogs(core.Stack):
         # Create VPC Flow Log for VPC
         ec2.CfnFlowLog(
             self,
-            "VpcFlowLogs",
+            f"{construct_id}:VpcFlowLogs",
             resource_id=self.vpc.vpc_id,
             resource_type='VPC',
             traffic_type='ALL',
