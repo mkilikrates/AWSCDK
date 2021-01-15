@@ -11,4 +11,7 @@ aws_cdk.aws_ssm
 aws_cdk.aws_certificatemanager
 aws_cdk.aws_route53
 aws_cdk.aws_route53_targets
+aws_cdk.aws_cloudformation
+aws-cdk.aws-lambda
+aws_cdk.aws_lambda_python
 -e .

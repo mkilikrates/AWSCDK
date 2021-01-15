@@ -69,7 +69,7 @@ class bastionv4(core.Stack):
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             ),
-            instance_name=resname + region,
+            instance_name=f"{resname}-{region}",
         )
         # add tags
         for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
@@ -159,7 +159,7 @@ class bastionv6(core.Stack):
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             ),
-            instance_name=resname + region,
+            instance_name=f"{resname}-{region}",
         )
         # add tags
         for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
