@@ -54,10 +54,32 @@ class EIP(core.Stack):
             role=(self.mylambdarole),
             log_retention=log.RetentionDays.ONE_WEEK
         )
-        self.mycustomresource = core.CfnCustomResource(
+        self.mycustomresource = core.CustomResource(
             self,
             f"{construct_id}:CustomResource",
-            service_token=self.mylambda.function_arn
-        ).add_property_override(
-            "Properties.Region", allocregion
-            )
+            service_token=self.mylambda.function_arn,properties=[
+                {
+                    "Region" : allocregion
+                }
+            ]
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:PublicIp",
+            value=self.mycustomresource.get_att_string("PublicIp"),
+            export_name=f"{construct_id}:PublicIp"
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:AllocationId",
+            value=self.mycustomresource.get_att_string("AllocationId"),
+            export_name=f"{construct_id}:AllocationId"
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:Region",
+            value=self.mycustomresource.get_att_string("Region"),
+            export_name=f"{construct_id}:Region"
+        )
+
+

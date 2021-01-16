@@ -11,7 +11,7 @@ logger.setLevel(logging.INFO)
 def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
-    allocregion = event['ResourceProperties']['Properties']['Region']
+    allocregion = event['ResourceProperties']['0']['Region']
     requestId = event['RequestId']
     stacktId = event['StackId']
     logresId = event['LogicalResourceId']
