@@ -12,7 +12,7 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class EIP(core.Stack):
 
-    def __init__(self, scope: core.Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, allocregion, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # The code that defines your stack goes here
@@ -58,5 +58,6 @@ class EIP(core.Stack):
             self,
             f"{construct_id}:CustomResource",
             service_token=self.mylambda.function_arn
-        )
-
+        ).add_property_override(
+            "Properties.Region", allocregion
+            )

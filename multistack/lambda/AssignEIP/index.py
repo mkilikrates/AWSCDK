@@ -11,7 +11,7 @@ logger.setLevel(logging.INFO)
 def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
-    region = os.environ['AWS_REGION']
+    allocregion = event['ResourceProperties']['Properties']['Region']
     requestId = event['RequestId']
     stacktId = event['StackId']
     logresId = event['LogicalResourceId']
@@ -27,14 +27,14 @@ def lambda_handler(event, context):
     try:
         if event['RequestType'] == 'Delete':
             phyresId = event['PhysicalResourceId']
-            client_ec2 = boto3.client('ec2', region_name=region)
+            client_ec2 = boto3.client('ec2', region_name=allocregion)
             action = client_ec2.release_address(
                 AllocationId=phyresId
             )
             response["Status"] = "SUCCESS"
             response["Reason"] = ("IP deallocation succeed!")
         elif event['RequestType'] == 'Create':
-            client_ec2 = boto3.client('ec2', region_name=region)
+            client_ec2 = boto3.client('ec2', region_name=allocregion)
             action = client_ec2.allocate_address(
                 Domain='vpc'
             )
@@ -43,10 +43,10 @@ def lambda_handler(event, context):
             response["Status"] = "SUCCESS"
             response["Reason"] = ("IP allocation succeed!")
             response["PhysicalResourceId"] = phyresId
-            response["Data"] = eip
+            response["Data"] = { "PublicIp" : eip, "AllocationId" : phyresId, "Region" : allocregion }
         else:
             phyresId = event['PhysicalResourceId']
-            client_ec2 = boto3.client('ec2', region_name=region)
+            client_ec2 = boto3.client('ec2', region_name=allocregion)
             action = client_ec2.describe_addresses(
                 AllocationIds=[
                     phyresId
@@ -57,7 +57,7 @@ def lambda_handler(event, context):
             response["Status"] = "SUCCESS"
             response["Reason"] = ("IP allocation succeed! Nothing to do here!")
             response["PhysicalResourceId"] = phyresId
-            response["Data"] = eip
+            response["Data"] = { "PublicIp" : eip }
             logger.info('Action: Nothing to do here! - {}'.format(event['RequestType']))
     except Exception as e:
         response = {}
