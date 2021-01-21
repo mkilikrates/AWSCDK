@@ -105,6 +105,19 @@ class vpcebasicv4(core.Stack):
             vpc=self.vpc,
             service=ec2.GatewayVpcEndpointAwsService.S3,
         )
+class vpcefreev4(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.vpc = vpc
+        self.vpcstack = vpcstack
+        #S3
+        ec2.GatewayVpcEndpoint(
+            self,
+            f"{construct_id}:S3Endpoint",
+            vpc=self.vpc,
+            service=ec2.GatewayVpcEndpointAwsService.S3,
+        )
 
 
 class vpcebasicv6(core.Stack):
@@ -216,6 +229,19 @@ class vpcebasicv6(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
+        #S3
+        ec2.GatewayVpcEndpoint(
+            self,
+            f"{construct_id}:S3Endpoint",
+            vpc=self.vpc,
+            service=ec2.GatewayVpcEndpointAwsService.S3,
+        )
+class vpcefreev6(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.vpc = vpc
+        self.vpcstack = vpcstack
         #S3
         ec2.GatewayVpcEndpoint(
             self,
