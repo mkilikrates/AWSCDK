@@ -14,4 +14,5 @@ aws_cdk.aws_route53_targets
 aws_cdk.aws_cloudformation
 aws-cdk.aws-lambda
 aws_cdk.aws_lambda_python
+aws_cdk.aws_networkfirewall
 -e .
