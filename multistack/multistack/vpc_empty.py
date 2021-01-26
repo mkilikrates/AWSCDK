@@ -179,3 +179,4 @@ class VPC(core.Stack):
                 ),
                 export_name=f"{construct_id}:vpccidrv6",
             )
+
