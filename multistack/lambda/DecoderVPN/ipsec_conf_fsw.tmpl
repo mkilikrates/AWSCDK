@@ -1,0 +1,22 @@
+conn {{ vgw_out_addr }}
+    auto=start
+    left=%defaultroute
+    leftid={{ cgw_out_addr }}
+    right={{ vgw_out_addr }}
+    type={{ ipsec_mode }}
+    leftauth=psk
+    rightauth=psk
+    keyexchange=ikev1
+    ike={{ ike_encryption_protocol }}-{{ ike_authentication_protocol }}-modp1024
+    ikelifetime={{ ike_lifetime }}h
+    esp={{ ipsec_encryption_protocol }}-{{ ipsec_authentication_protocol }}-modp1024
+    lifetime={{ ipsec_lifetime }}h
+    keyingtries=%forever
+    leftsubnet=0.0.0.0/0
+    rightsubnet=0.0.0.0/0
+    dpddelay={{ dpd_delay }}s
+    dpdtimeout={{ dpdtimeout }}s
+    dpdaction=restart
+    mark={{ tnum }}00
+    leftupdown="/etc/strongswan/ipsec.d/aws-updown.sh -ln Tunnel{{ tnum }} -ll {{ cgw_in_addr }}/{{ cgw_in_cidr }} -lr {{ vgw_in_addr }}/{{ vgw_in_cidr }} -m {{ tnum }}00 -r a.b.c.d/e"
+

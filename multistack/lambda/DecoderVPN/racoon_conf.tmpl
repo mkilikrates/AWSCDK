@@ -1,0 +1,71 @@
+{% if tnum == 1 %}
+path pre_shared_key "/usr/local/etc/racoon/psk.txt";
+log error;
+padding
+{
+	randomize_length on;
+	maximum_length 20;	# maximum padding length.
+	randomize on;		# enable randomize length.
+	strict_check off;	# enable strict check.
+	exclusive_tail off;	# extract last one octet.
+}
+timer
+{
+	# These value can be changed per remote node.
+	counter 5;		# maximum trying count to send.
+	interval 20 sec;	# maximum interval to resend.
+	persend 1;		# the number of packets per send.
+	natt_keepalive  15 sec;
+	# maximum time to wait for completing each phase.
+	phase1 30 sec;
+	phase2 15 sec;
+}
+listen
+{
+{% if mylocalip != "" %}
+	isakmp {{ mylocalip }} [500];
+	isakmp_natt {{ mylocalip }} [4500];
+{% endif %}
+{% if mylocalip == "" %}
+	isakmp {{ cgw_out_addr }} [500];
+{% endif %}
+	strict_address;
+	adminsock disabled;
+}
+{% endif %}
+remote {{ vgw_out_addr }} {
+	exchange_mode {{ ike_mode   }};
+{% if mylocalip != "" %}
+	my_identifier address {{ mylocalip }};
+{% endif %}
+{% if mylocalip == "" %}
+	my_identifier address {{ cgw_out_addr }};
+{% endif %}
+	peers_identifier address {{ vgw_out_addr }};
+	lifetime time {{ ike_lifetime }} seconds;
+	passive off;
+	proposal_check strict;
+	nat_traversal on;
+	generate_policy off;
+	ike_frag off;
+	passive off;
+	support_proxy on;
+	ph1id {{ tnum }};
+	proposal {
+		encryption_algorithm {{ ike_encryption_protocol }};
+		hash_algorithm {{ ike_authentication_protocol }};
+		authentication_method pre_shared_key;
+		dh_group {{ ike_perfect_forward_secrecy }};
+     }
+	dpd_delay {{ dpd_delay }};
+	dpd_retry {{ dpd_retry }};
+}
+sainfo address {{ cgw_in_addr }}/{{ cgw_in_cidr }} any address {{ vgw_in_addr }}/{{ vgw_in_cidr }} any {
+	pfs_group {{ ipsec_perfect_forward_secrecy }};
+	lifetime time {{ ipsec_lifetime }} seconds;
+	encryption_algorithm {{ ipsec_encryption_protocol }};
+	authentication_algorithm {{ ipsec_authentication_protocol }};
+	compression_algorithm deflate;
+	remoteid {{ tnum }};
+}
+

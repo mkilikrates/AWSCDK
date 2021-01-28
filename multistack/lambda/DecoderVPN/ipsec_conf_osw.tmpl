@@ -1,0 +1,28 @@
+conn {{ vgw_out_addr }}
+    authby=secret
+    auto=start
+    sha2_truncbug=no
+    left=%defaultroute
+    leftid={{ cgw_out_addr }}
+    right={{ vgw_out_addr }}
+    type={{ ipsec_mode }}
+    keyexchange=ike
+    ikev2=permit
+    ike={{ ike_encryption_protocol }}-{{ ike_authentication_protocol }};modp1024
+    ikelifetime={{ ike_lifetime }}s
+    phase2alg={{ ipsec_encryption_protocol }}-{{ ipsec_authentication_protocol }};modp1024
+    lifetime={{ ipsec_lifetime }}s
+    keyingtries=%forever
+    leftsubnet=0.0.0.0/0
+    rightsubnet=0.0.0.0/0
+    dpddelay={{ dpd_delay }}
+    dpdtimeout={{ dpdtimeout }}
+    dpdaction=restart
+    mark={{ tnum }}/0xffffffff
+    rekeymargin=540s
+    rekeyfuzz=100%
+    vti-interface=Tunnel{{ tnum }}
+    leftvti={{ cgw_in_addr }}/{{ cgw_in_cidr }}
+    vti-routing=yes
+    leftupdown="/etc/ipsec.d/aws-updown.sh -ln Tunnel{{ tnum }} -ll {{ cgw_in_addr }}/{{ cgw_in_cidr }} -lr {{ vgw_in_addr }}/{{ vgw_in_cidr }} -m {{ tnum }} -r a.b.c.d/e"
+
