@@ -148,3 +148,26 @@ class internetfw(core.Stack):
             firewall_policy_change_protection=False,
             subnet_change_protection=False,
         )
+        core.CfnOutput(
+            self,
+            f"{construct_id}OutNetworkFirewallId",
+            value=self.netfwprop.attr_firewall_id,
+            export_name=f"{construct_id}:NetworkFirewallId"
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}OutNetworkFirewallArn",
+            value=self.netfwprop.attr_firewall_arn,
+            export_name=f"{construct_id}:NetworkFirewallArn"
+        )
+        # for id in enumerate(self.netfwprop.attr_endpoint_ids):
+        #     core.CfnOutput(
+        #         self,
+        #         f"{construct_id}OutNetwFwEnd{id}",
+        #         value=core.Fn.select(
+        #             id,
+        #             self.netfwprop.attr_endpoint_ids.
+        #         ),
+        #         export_name=f"{construct_id}NetwFwEnd{id}"
+        #     )
+
