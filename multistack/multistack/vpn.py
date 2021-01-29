@@ -132,11 +132,15 @@ class cvpn(core.Stack):
             description="Allow All"
         )
 class s2svpn(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, gwid, cgwaddr, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, gwid, cgwaddr, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.cgwaddr = cgwaddr.get_att_string("PublicIp")
         self.gwid = gwid
+        if route == 'bgp':
+            self.route = False
+        if route == 'bgp':
+            self.route = True
         self.cgw = ec2.CfnCustomerGateway(
             self,
             f"{construct_id}:mycgw",
@@ -156,7 +160,7 @@ class s2svpn(core.Stack):
                 f"{construct_id}:vpn",
                 customer_gateway_id=self.cgw.ref,
                 type=('ipsec.1'),
-                static_routes_only=False,
+                static_routes_only=self.route,
                 vpn_gateway_id=self.gwid.gateway_id
             )
         if gwtype == 'tgw':
@@ -165,7 +169,7 @@ class s2svpn(core.Stack):
                 f"{construct_id}:vpn",
                 customer_gateway_id=self.cgw.ref,
                 type=('ipsec.1'),
-                static_routes_only=False,
+                static_routes_only=self.route,
                 transit_gateway_id=self.gwid.ref
             )
         core.CfnOutput(

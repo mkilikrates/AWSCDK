@@ -13,16 +13,16 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class VPC(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, stack, cidrid, natgw, maxaz, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, stack, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.cidrid = int(cidrid)
         self.natgw = int(natgw)
         self.maxaz = int(maxaz)
         self.vpcstack = stack
+        res = res
         # get prefix list from file to allow traffic from the office
         vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
-        res = 'vpc'
         resname = resmap['Mappings']['Resources'][res]['NAME']
         self.sub = []
         for subtype in resmap['Mappings']['Resources'][res]['SUBNETS']:

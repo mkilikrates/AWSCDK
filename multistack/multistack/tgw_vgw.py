@@ -10,11 +10,17 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class mygw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
         self.bastionsg = bastionsg
+        self.route = route
+        if self.route == 'bgp':
+            # get prefix list from file to allow traffic from the office
+            vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
+        if self.route == 'static':
+            vgasn = 64512
         # create prefix list for RFC1918
         mynet10rfc1918 = ec2.CfnPrefixList.EntryProperty(
             cidr='10.0.0.0/8',
@@ -50,8 +56,6 @@ class mygw(core.Stack):
         )
         if gwtype == 'tgw':
             self.gw = gwid
-            # get prefix list from file to allow traffic from the office
-            vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
             if self.gw =='':
                 # create transit gateway
                 self.gw = ec2.CfnTransitGateway(
@@ -175,8 +179,6 @@ class mygw(core.Stack):
             # if self.vpc.stack == 'Ipv6':
         if gwtype == 'vgw':
             self.gw = gwid
-            # get prefix list from file to allow traffic from the office
-            vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
             # create Virtual private gateway
             self.gw = ec2.VpnGateway(
                 self,

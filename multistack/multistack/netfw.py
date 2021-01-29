@@ -35,78 +35,78 @@ class internetfw(core.Stack):
         #         mypubrts[id].append(subnet.route_table)
         #         mysetpubrts[id] = set(mypubrts[id])
 
-        self.netfwrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
-            rule_variables=None,
-            rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
-                rules_source_list=None,
-                stateful_rules=None,
-                stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
-                    stateless_rules=[
-                        netfw.CfnRuleGroup.StatelessRuleProperty(
-                            priority=10,
-                            rule_definition=[
-                                netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                    actions=["aws:forward_to_sfe"],
-                                    match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-                                        destination_ports=[
-                                            netfw.CfnRuleGroup.PortRangeProperty(
-                                                from_port=80,
-                                                to_port=80
-                                            ),
-                                            netfw.CfnRuleGroup.PortRangeProperty(
-                                                from_port=443,
-                                                to_port=443
-                                            )
-                                        ],
-                                        destinations=[
-                                            netfw.CfnRuleGroup.AddressesProperty(
-                                                addresses=('0.0.0.0/0')
-                                            ),
-                                            netfw.CfnRuleGroup.AddressesProperty(
-                                                addresses=('::/0')
-                                            ),
-                                        ],
-                                        sources=[
-                                            netfw.CfnRuleGroup.AddressesProperty(
-                                                addresses=self.vpc.vpc_cidr_block
-                                            ),
-                                            netfw.CfnRuleGroup.AddressesProperty(
-                                                addresses=core.Fn.select(
-                                                    0,
-                                                    self.vpc.vpc_ipv6_cidr_blocks
-                                                )
-                                            )
-                                        ],
-                                        source_ports=[
-                                            netfw.CfnRuleGroup.PortRangeProperty(
-                                                from_port=0,
-                                                to_port=65535
-                                            )
-                                        ]
-                                    )
-                                )
-                            ]
-                        )
-                    ]
-                )
-            )
-        )
-        # create rule group
-        self.netfwrulegrpstateless = netfw.CfnRuleGroup(
-            self,
-            f"{construct_id}MyNetFWRuleGrpStateless",
-            capacity=netfwrlgrpcap,
-            rule_group_name=(
-                f"{construct_id}MyNetFWRuleGrpStateless"
-            ),
-            type=(
-                "STATELESS"
-            ),
-            description=(
-                "Stateless Rule Group"
-            ),
-            rule_group=[self.netfwrulegrp]
-        )
+        # self.netfwrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
+        #     rule_variables=None,
+        #     rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+        #         rules_source_list=None,
+        #         stateful_rules=None,
+        #         stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
+        #             stateless_rules=[
+        #                 netfw.CfnRuleGroup.StatelessRuleProperty(
+        #                     priority=10,
+        #                     rule_definition=[
+        #                         netfw.CfnRuleGroup.RuleDefinitionProperty(
+        #                             actions=["aws:forward_to_sfe"],
+        #                             match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
+        #                                 destination_ports=[
+        #                                     netfw.CfnRuleGroup.PortRangeProperty(
+        #                                         from_port=80,
+        #                                         to_port=80
+        #                                     ),
+        #                                     netfw.CfnRuleGroup.PortRangeProperty(
+        #                                         from_port=443,
+        #                                         to_port=443
+        #                                     )
+        #                                 ],
+        #                                 destinations=[
+        #                                     netfw.CfnRuleGroup.AddressesProperty(
+        #                                         addresses=('0.0.0.0/0')
+        #                                     ),
+        #                                     netfw.CfnRuleGroup.AddressesProperty(
+        #                                         addresses=('::/0')
+        #                                     ),
+        #                                 ],
+        #                                 sources=[
+        #                                     netfw.CfnRuleGroup.AddressesProperty(
+        #                                         addresses=self.vpc.vpc_cidr_block
+        #                                     ),
+        #                                     netfw.CfnRuleGroup.AddressesProperty(
+        #                                         addresses=core.Fn.select(
+        #                                             0,
+        #                                             self.vpc.vpc_ipv6_cidr_blocks
+        #                                         )
+        #                                     )
+        #                                 ],
+        #                                 source_ports=[
+        #                                     netfw.CfnRuleGroup.PortRangeProperty(
+        #                                         from_port=0,
+        #                                         to_port=65535
+        #                                     )
+        #                                 ]
+        #                             )
+        #                         )
+        #                     ]
+        #                 )
+        #             ]
+        #         )
+        #     )
+        # )
+        # # create rule group
+        # self.netfwrulegrpstateless = netfw.CfnRuleGroup(
+        #     self,
+        #     f"{construct_id}MyNetFWRuleGrpStateless",
+        #     capacity=netfwrlgrpcap,
+        #     rule_group_name=(
+        #         f"{construct_id}MyNetFWRuleGrpStateless"
+        #     ),
+        #     type=(
+        #         "STATELESS"
+        #     ),
+        #     description=(
+        #         "Stateless Rule Group"
+        #     ),
+        #     rule_group=[self.netfwrulegrp]
+        # )
         #create firewall policy
         self.netfwspolicy = netfw.CfnFirewallPolicy(
 			self,
@@ -130,27 +130,21 @@ class internetfw(core.Stack):
             value=self.netfwspolicy.attr_firewall_policy_arn,
             export_name=f"{construct_id}:NetworkFirewallPolicy"
         )
-        # self.netfwprop = netfw.CfnFirewall(
-        #     self,
-        #     f"{construct_id}MyNetFW",
-        #     firewall_name=f"{construct_id}MyNetFW",
-        #     firewall_policy_arn=self.netfwspolicy.attr_firewall_policy_arn,
-        #     subnet_mappings=[
-        #         netfw.CfnFirewall.SubnetMappingProperty(
-        #             subnet_id=ec2.SubnetSelection(
-        #                 subnet_type=ec2.SubnetType.ISOLATED,subnet_group_name='Endpoints',one_per_az=True
-        #             )
-        #         )
-        #     ],
-        #     vpc_id=self.vpc.vpc_id,
-        #     delete_protection=False,
-        #     description=('My Firewall-' + region),
-        #     firewall_policy_change_protection=False,
-        #     subnet_change_protection=False,
-        #     tags=[
-        #         {
-        #             'key':'TagTest',
-        #             'value': 'blabla'
-        #         }
-        #     ]
-        # )
+        self.netfwprop = netfw.CfnFirewall(
+            self,
+            f"{construct_id}MyNetFW",
+            firewall_name=f"{construct_id}MyNetFW",
+            firewall_policy_arn=self.netfwspolicy.attr_firewall_policy_arn,
+            subnet_mappings=[
+                netfw.CfnFirewall.SubnetMappingProperty(
+                    subnet_id = subnet_id
+                ) for subnet_id in self.vpc.select_subnets(
+                    subnet_group_name='Endpoints'
+                ).subnet_ids
+            ],
+            vpc_id=self.vpc.vpc_id,
+            delete_protection=False,
+            description=('My Firewall-' + region),
+            firewall_policy_change_protection=False,
+            subnet_change_protection=False,
+        )
