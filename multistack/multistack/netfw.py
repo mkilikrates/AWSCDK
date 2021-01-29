@@ -160,14 +160,35 @@ class internetfw(core.Stack):
             value=self.netfwprop.attr_firewall_arn,
             export_name=f"{construct_id}:NetworkFirewallArn"
         )
-        # for id in enumerate(self.netfwprop.attr_endpoint_ids):
-        #     core.CfnOutput(
-        #         self,
-        #         f"{construct_id}OutNetwFwEnd{id}",
-        #         value=core.Fn.select(
-        #             id,
-        #             self.netfwprop.attr_endpoint_ids.
-        #         ),
-        #         export_name=f"{construct_id}NetwFwEnd{id}"
-        #     )
+        for index, endpointid in enumerate(self.netfwprop.attr_endpoint_ids):
+            core.CfnOutput(
+                self,
+                f"{construct_id}OutNetwFwEnd{id}AZ",
+                value=core.Fn.select(
+                    1,
+                    core.Fn.split(
+                        ":",
+                        core.Fn.select(
+                                index,
+                                self.netfwprop.attr_endpoint_ids,
+                        )
+                    )
+                ),
+                export_name=f"{construct_id}NetwFwEnd{id}AZ"
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}OutNetwFwEnd{id}AZid",
+                value=core.Fn.select(
+                    2,
+                    core.Fn.split(
+                        ":",
+                        core.Fn.select(
+                                index,
+                                self.netfwprop.attr_endpoint_ids,
+                        )
+                    )
+                ),
+                export_name=f"{construct_id}NetwFwEnd{id}AZid"
+            )
 
