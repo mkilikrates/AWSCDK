@@ -163,7 +163,22 @@ class internetfw(core.Stack):
         for index, endpointid in enumerate(self.netfwprop.attr_endpoint_ids):
             core.CfnOutput(
                 self,
-                f"{construct_id}OutNetwFwEnd{id}AZ",
+                f"{construct_id}OutNetwFwEndAZ-{id}",
+                value=core.Fn.select(
+                    0,
+                    core.Fn.split(
+                        ":",
+                        core.Fn.select(
+                                index,
+                                self.netfwprop.attr_endpoint_ids,
+                        )
+                    )
+                ),
+                export_name=f"{construct_id}OutNetwFwEndAZ-{index}"
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}OutNetwFwEndId-{index}",
                 value=core.Fn.select(
                     1,
                     core.Fn.split(
@@ -174,21 +189,6 @@ class internetfw(core.Stack):
                         )
                     )
                 ),
-                export_name=f"{construct_id}NetwFwEnd{id}AZ"
-            )
-            core.CfnOutput(
-                self,
-                f"{construct_id}OutNetwFwEnd{id}AZid",
-                value=core.Fn.select(
-                    2,
-                    core.Fn.split(
-                        ":",
-                        core.Fn.select(
-                                index,
-                                self.netfwprop.attr_endpoint_ids,
-                        )
-                    )
-                ),
-                export_name=f"{construct_id}NetwFwEnd{id}AZid"
+                export_name=f"{construct_id}NetwFwEndId-{index}"
             )
 
