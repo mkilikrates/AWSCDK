@@ -139,7 +139,7 @@ class s2svpn(core.Stack):
         self.gwid = gwid
         if route == 'bgp':
             self.route = False
-        if route == 'bgp':
+        if route == 'static':
             self.route = True
         self.cgw = ec2.CfnCustomerGateway(
             self,
@@ -172,7 +172,7 @@ class s2svpn(core.Stack):
                 static_routes_only=self.route,
                 transit_gateway_id=self.gwid.ref
             )
-        core.CfnOutput(
+        self.vpnid = core.CfnOutput(
             self,
             f"{construct_id}:myvpn",
             value=self.vpn.ref,

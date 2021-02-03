@@ -10,18 +10,22 @@ from aws_cdk import (
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+resconf = "resourcesmap.cfg"
+with open(resconf) as resfile:
+    resmap = json.load(resfile)
+
 class S2SVPNS3(core.Stack):
 
-    def __init__(self, scope: core.Construct, construct_id: str, route, bucket, vpnid = ec2.VpnConnection, vpc = ec2.Vpc, rvpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, route, res, vpnid = ec2.VpnConnection, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # The code that defines your stack goes here
         # get imported objects
         self.vpc = vpc
-        self.rvpc = rvpc
-        self.vpnid = vpnid
+        self.vpnid = vpnid.ref
         self.route = route
-        self.bucketname = bucket
+        res = res
+        self.bucketname = resmap['Mappings']['Resources'][res]['S3']
         # create Police for lambda function
         self.mylambdapolicy = iam.PolicyStatement(
             actions=[
@@ -43,8 +47,8 @@ class S2SVPNS3(core.Stack):
                 "s3:PutObject"
             ],
             resources=[
-                "arn:aws:s3:::mauranjo",
-                "arn:aws:s3:::mauranjo/vpn/*"
+                f"arn:aws:s3:::{self.bucketname}",
+                f"arn:aws:s3:::{self.bucketname}/vpn/*"
             ],
             effect=iam.Effect.ALLOW
         )
@@ -73,35 +77,24 @@ class S2SVPNS3(core.Stack):
             log_retention=log.RetentionDays.ONE_WEEK
         )
         
-        # self.mycustomresource = core.CustomResource(
-        #     self,
-        #     f"{construct_id}:CustomResource",
-        #     service_token=self.mylambda.function_arn,properties=[
-        #         {
-        #             "VPN" : self.vpnid,
-        #             "Route" : self.route,
-        #             "InstIPv4" : insipv4,
-        #             "LocalCidr" : self.vpc.vpc_cidr_block_associations,
-        #             "RemoteCidr" : self.rvpc.vpc_cidr_block_associations,
-        #             "S3" : self.bucketname,
-        #         }
-        #     ]
-        # )
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:VPNid",
-        #     value=vpnid,
-        #     export_name=f"{construct_id}:VPNid"
-        # )
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:Bucket",
-        #     value=self.mycustomresource.get_att_string("AllocationId"),
-        #     export_name=f"{construct_id}:Bucket"
-        # )
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:BucketPath",
-        #     value=self.mycustomresource.get_att_string("Region"),
-        #     export_name=f"{construct_id}:BucketPath"
-        # )
+        self.mycustomresource = core.CustomResource(
+            self,
+            f"{construct_id}:CustomResource",
+            service_token=self.mylambda.function_arn,
+            properties=[
+                {
+                    "VPN" : self.vpnid,
+                    "Route" : self.route,
+                    "InstIPv4" : "insipv4",
+                    "RemoteCidr" : self.vpc.vpc_cidr_block,
+                    "LocalCidr" : "vpccidr",
+                    "S3" : self.bucketname,
+                }
+            ]
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:LambdaArn",
+            value=self.mylambda.function_arn,
+            export_name=f"{construct_id}:LambdaArn"
+        )

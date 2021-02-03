@@ -6,12 +6,6 @@ from aws_cdk import (
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
-resconf = "resourcesmap.cfg"
-with open(resconf) as resfile:
-    resmap = json.load(resfile)
-with open('zonemap.cfg') as zonefile:
-    zonemap = json.load(zonefile)
-
 class VPC(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, stack, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -21,6 +15,13 @@ class VPC(core.Stack):
         self.maxaz = int(maxaz)
         self.vpcstack = stack
         res = res
+        # get prefix list from file to allow traffic from the office
+        res = res
+        resconf = "resourcesmap.cfg"
+        with open(resconf) as resfile:
+            resmap = json.load(resfile)
+        with open('zonemap.cfg') as zonefile:
+            zonemap = json.load(zonefile)
         # get prefix list from file to allow traffic from the office
         vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
         resname = resmap['Mappings']['Resources'][res]['NAME']

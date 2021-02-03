@@ -17,8 +17,9 @@ ec2 = boto3.client('ec2', region_name=region)
 def fileupload(mycfgfile, bucketname, myobj):
     try:
         with open(mycfgfile, "rb") as data:
-            s3.upload_fileobj(data, bucketname, myobj)
-            logger.info('S3: Creation of folder Success: {}'.format(folder))
+            response = s3.upload_fileobj(data, bucketname, myobj)
+            logger.info('S3: Upload object Success: {}'.format(mycfgfile))
+            return response
     except Exception as e:
         logger.info('S3: Creation of folder Error: {}'.format(e))
 
@@ -26,8 +27,9 @@ def fileupload(mycfgfile, bucketname, myobj):
 def createfolder(bucketname, folder):
     # create config folder to vpn files
     try:
-        s3.put_object(Bucket=bucketname, Key=(folder))
+        response = s3.put_object(Bucket=bucketname, Key=(folder))
         logger.info('S3: Creation of folder Success: {}'.format(folder))
+        return response
     except Exception as e:
         logger.info('S3: Creation of folder Error: {}'.format(e))
 
@@ -39,21 +41,24 @@ def deletevpnfolder(bucketname, folder):
             # remove content
             if folder != obj['Key']:
                 s3.delete_object(Bucket=bucketname, Key=obj['Key'])
+                logger.info('S3: Deletion of object Success: {}'.format(obj['Key']))
         #remove folder
         s3.delete_object(Bucket=bucketname, Key=folder)
         logger.info('S3: Deletion of folder Success: {}'.format(folder))
+        return response
     except Exception as e:
         logger.info('S3: Deletion of folder Error: {}'.format(e))
 
 def describevpn(vpnid):
     # Get VPN Configuration XML
     try:
-        ec2.describe_vpn_connections(
+        response = ec2.describe_vpn_connections(
             VpnConnectionIds=[
                 vpnid,
             ]
         )
         logger.info('EC2: VPN Configuration Received Success: {}'.format(vpnid))
+        return response
     except Exception as e:
         logger.info('EC2: VPN Configuration Error: {}'.format(e))
 
@@ -61,14 +66,14 @@ def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
     #region = event['region']
-    vpnid = event['ResourceProperties']['0']['VPNid']
+    vpnid = event['ResourceProperties']['0']['VPN']
     routetype = event['ResourceProperties']['0']['Route']
     bucketname = event['ResourceProperties']['0']['S3']
     mylocalip = event['ResourceProperties']['0']['InstIPv4']
     if 'LocalCidr' in event['ResourceProperties']['0']:
         localcidr = event['ResourceProperties']['0']['LocalCidr']
     if 'RemoteCidr' in event['ResourceProperties']['0']:
-        remotecidr = event['ResourceProperties']['0']['LocRemoteCidralCidr']
+        remotecidr = event['ResourceProperties']['0']['RemoteCidr']
     mys3vpnfolder = f"vpn/{vpnid}/"
     mylocalfolder = '/tmp/'
     requestId = event['RequestId']
@@ -125,7 +130,7 @@ def lambda_handler(event, context):
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                 cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
-                if routetype == 'BGP':
+                if routetype == 'bgp':
                     cgw_bgp_asn = tun['customer_gateway']['bgp']['asn']
                     cgw_bgp_ht = tun['customer_gateway']['bgp']['hold_time']
                     vgw_bgp_asn = tun['vpn_gateway']['bgp']['asn']
@@ -157,14 +162,14 @@ def lambda_handler(event, context):
                     sys.stdout = open(mycfgfile, 'w')
                 else:
                     sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {1}\n{2}\t{3}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                print('#Tunnel {0}\n{1}\t{2}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
                 # secret file for openswan/libreswan
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 if tnum == 1:
                     sys.stdout = open(mycfgfile, 'w')
                 else:
                     sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {1}\n{2} {3} : PSK "{4}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                print('#Tunnel {0}\n{1} {2} : PSK "{3}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
                 # racoon.conf
                 mycfgfile = f"{mylocalfolder}racoon.conf"
                 if tnum == 1:
@@ -282,7 +287,7 @@ def lambda_handler(event, context):
                         vgw_out_addr = vgw_out_addr
                     )
                 )
-                if routetype == 'BGP':
+                if routetype == 'bgp':
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
                     if tnum == 1:
@@ -306,26 +311,33 @@ def lambda_handler(event, context):
             myobj = f"{mys3vpnfolder}racoon.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # ipsec-tools.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
+            myobj = f"{mys3vpnfolder}ipsec-tools.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # vpnid.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}{vpnid}.conf"
+            myobj = f"{mys3vpnfolder}{vpnid}.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # ipsec.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}ipsec.conf"
+            myobj = f"{mys3vpnfolder}ipsec.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # rc.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}rc.conf"
+            myobj = f"{mys3vpnfolder}rc.conf"
             fileupload(mycfgfile, bucketname, myobj)
-            if routetype == 'BGP':
+            if routetype == 'bgp':
                 # bgp.conf
-                mycfgfile = f"{mylocalfolder}racoon.conf"
-                myobj = f"{mys3vpnfolder}racoon.conf"
+                mycfgfile = f"{mylocalfolder}bgp.conf"
                 fileupload(mycfgfile, bucketname, myobj)
+            # vpnid.secrets
+            mycfgfile = f"{mylocalfolder}{vpnid}.secrets"
+            myobj = f"{mys3vpnfolder}{vpnid}.secrets"
+            fileupload(mycfgfile, bucketname, myobj)
+            # ipsec.secrets
+            mycfgfile = f"{mylocalfolder}ipsec.secrets"
+            myobj = f"{mys3vpnfolder}ipsec.secrets"
+            fileupload(mycfgfile, bucketname, myobj)
             phyresId = vpnid
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Configuration upload succeed!")
@@ -365,7 +377,7 @@ def lambda_handler(event, context):
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                 cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
-                if routetype == 'BGP':
+                if routetype == 'bgp':
                     cgw_bgp_asn = tun['customer_gateway']['bgp']['asn']
                     cgw_bgp_ht = tun['customer_gateway']['bgp']['hold_time']
                     vgw_bgp_asn = tun['vpn_gateway']['bgp']['asn']
@@ -522,7 +534,7 @@ def lambda_handler(event, context):
                         vgw_out_addr = vgw_out_addr
                     )
                 )
-                if routetype == 'BGP':
+                if routetype == 'bgp':
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
                     if tnum == 1:
@@ -546,26 +558,34 @@ def lambda_handler(event, context):
             myobj = f"{mys3vpnfolder}racoon.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # ipsec-tools.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
+            myobj = f"{mys3vpnfolder}ipsec-tools.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # vpnid.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}{vpnid}.conf"
+            myobj = f"{mys3vpnfolder}{vpnid}.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # ipsec.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}ipsec.conf"
+            myobj = f"{mys3vpnfolder}ipsec.conf"
             fileupload(mycfgfile, bucketname, myobj)
             # rc.conf
-            mycfgfile = f"{mylocalfolder}racoon.conf"
-            myobj = f"{mys3vpnfolder}racoon.conf"
+            mycfgfile = f"{mylocalfolder}rc.conf"
+            myobj = f"{mys3vpnfolder}rc.conf"
             fileupload(mycfgfile, bucketname, myobj)
-            if routetype == 'BGP':
+            if routetype == 'bgp':
                 # bgp.conf
-                mycfgfile = f"{mylocalfolder}racoon.conf"
-                myobj = f"{mys3vpnfolder}racoon.conf"
+                mycfgfile = f"{mylocalfolder}bgp.conf"
+                myobj = f"{mys3vpnfolder}bgp.conf"
                 fileupload(mycfgfile, bucketname, myobj)
+            # vpnid.secrets
+            mycfgfile = f"{mylocalfolder}{vpnid}.secrets"
+            myobj = f"{mys3vpnfolder}{vpnid}.secrets"
+            fileupload(mycfgfile, bucketname, myobj)
+            # ipsec.secrets
+            mycfgfile = f"{mylocalfolder}ipsec.secrets"
+            myobj = f"{mys3vpnfolder}ipsec.secrets"
+            fileupload(mycfgfile, bucketname, myobj)
             phyresId = vpnid
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Configuration upload succeed!")

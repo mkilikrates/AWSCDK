@@ -4,21 +4,26 @@ from aws_cdk import (
     aws_ec2 as ec2,
     core,
 )
-account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
-region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
-resconf = "resourcesmap.cfg"
-with open(resconf) as resfile:
-    resmap = json.load(resfile)
-with open('zonemap.cfg') as zonefile:
-    zonemap = json.load(zonefile)
+account = core.Aws.ACCOUNT_ID
+region = core.Aws.REGION
 class bastion(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
         res = res
+        resconf = "resourcesmap.cfg"
+        with open(resconf) as resfile:
+            resmap = json.load(resfile)
+        with open('zonemap.cfg') as zonefile:
+            zonemap = json.load(zonefile)
         # get prefix list from file to allow traffic from the office
-        srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
+        mymap = core.CfnMapping(
+            self,
+            f"{construct_id}Map",
+            mapping=zonemap["Mappings"]["RegionMap"]
+        )
+        srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # create security group for bastion
         self.bastionsg = ec2.SecurityGroup(
             self,
@@ -37,12 +42,10 @@ class bastion(core.Stack):
          # add ingress rules
         if allowsg != '':
             self.bastionsg.add_ingress_rule(
-                self.allowsg,
+                allowsg,
                 ec2.Port.all_traffic()
             )
         if preflst == True:
-            # get prefix list from file to allow traffic from the office
-            srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
             self.bastionsg.add_ingress_rule(
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()

@@ -8,8 +8,8 @@ from aws_cdk import (
     aws_ec2 as ec2,
     core,
 )
-account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
-region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+account = core.Aws.ACCOUNT_ID
+region = core.Aws.REGION
 class EIP(core.Stack):
 
     def __init__(self, scope: core.Construct, construct_id: str, allocregion, **kwargs) -> None:

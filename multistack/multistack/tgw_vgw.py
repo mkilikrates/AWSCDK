@@ -18,7 +18,7 @@ class mygw(core.Stack):
         self.route = route
         if self.route == 'bgp':
             # get prefix list from file to allow traffic from the office
-            vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
+            vgasn = zonemap['Mappings']['RegionMap'][region]['ASN']
         if self.route == 'static':
             vgasn = 64512
         # create prefix list for RFC1918
