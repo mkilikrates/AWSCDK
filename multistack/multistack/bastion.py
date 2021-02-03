@@ -12,11 +12,11 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class bastion(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, resource, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
-        res = resource
+        res = res
         # get prefix list from file to allow traffic from the office
         srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
         # create security group for bastion
@@ -35,10 +35,28 @@ class bastion(core.Stack):
             group_id=self.bastionsg.security_group_id
         )
          # add ingress rules
-        self.bastionsg.add_ingress_rule(
-            ec2.Peer.prefix_list(srcprefix),
-            ec2.Port.all_traffic()
-        )
+        if allowsg != '':
+            self.bastionsg.add_ingress_rule(
+                self.allowsg,
+                ec2.Port.all_traffic()
+            )
+        if preflst == True:
+            # get prefix list from file to allow traffic from the office
+            srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
+            self.bastionsg.add_ingress_rule(
+                ec2.Peer.prefix_list(srcprefix),
+                ec2.Port.all_traffic()
+            )
+        if allowall == True:
+            self.bastionsg.add_ingress_rule(
+                ec2.Peer.any_ipv4,
+                ec2.Port.all_traffic()
+            )
+        if type(allowall) == int or type(allowall) == float:
+            self.bastionsg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(allowall)
+            )
         self.bastionsg.add_ingress_rule(
             self.bastionsg,
             ec2.Port.all_traffic()
@@ -51,6 +69,17 @@ class bastion(core.Stack):
                 cidr_ipv6="::/0",
                 group_id=self.bastionsg.security_group_id
             )
+            if allowall == True:
+                self.bastionsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
+                )
+            if type(allowall) == int or type(allowall) == float:
+                self.bastionsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.all_traffic()
+                )
+
         # get data for bastion resource
         resname = resmap['Mappings']['Resources'][res]['NAME']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']

@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_networkfirewall as netfw,
@@ -14,99 +15,114 @@ class internetfw(core.Stack):
         self.vpc = vpc
         netfwrlgrpcap = 10
 
-        # create rules to fw internet traffic to statefull rules
-        self.incomingrt = ec2.CfnRouteTable(
-            self,
-            f"{construct_id}IncomeRouteTable",
-            vpc_id=self.vpc.vpc_id
-        )
-        # edge association
-        ec2.CfnGatewayRouteTableAssociation(
-            self,
-            f"{construct_id}IncomeRouteTableAssociation",
-            gateway_id=self.vpc.internet_gateway_id,
-            route_table_id=self.incomingrt.ref
-        )
         # mypubrts = {}
         # mysetpubrts = {}
         # for id in enumerate(self.vpc.availability_zones):
         #     mypubrts[id] = []
         #     for subnet in self.vpc.public_subnets:
         #         mypubrts[id].append(subnet.route_table)
-        #         mysetpubrts[id] = set(mypubrts[id])
+        #     mysetpubrts[id] = set(mypubrts[id])
 
-        # self.netfwrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
-        #     rule_variables=None,
-        #     rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
-        #         rules_source_list=None,
-        #         stateful_rules=None,
-        #         stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
-        #             stateless_rules=[
-        #                 netfw.CfnRuleGroup.StatelessRuleProperty(
-        #                     priority=10,
-        #                     rule_definition=[
-        #                         netfw.CfnRuleGroup.RuleDefinitionProperty(
-        #                             actions=["aws:forward_to_sfe"],
-        #                             match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-        #                                 destination_ports=[
-        #                                     netfw.CfnRuleGroup.PortRangeProperty(
-        #                                         from_port=80,
-        #                                         to_port=80
-        #                                     ),
-        #                                     netfw.CfnRuleGroup.PortRangeProperty(
-        #                                         from_port=443,
-        #                                         to_port=443
-        #                                     )
-        #                                 ],
-        #                                 destinations=[
-        #                                     netfw.CfnRuleGroup.AddressesProperty(
-        #                                         addresses=('0.0.0.0/0')
-        #                                     ),
-        #                                     netfw.CfnRuleGroup.AddressesProperty(
-        #                                         addresses=('::/0')
-        #                                     ),
-        #                                 ],
-        #                                 sources=[
-        #                                     netfw.CfnRuleGroup.AddressesProperty(
-        #                                         addresses=self.vpc.vpc_cidr_block
-        #                                     ),
-        #                                     netfw.CfnRuleGroup.AddressesProperty(
-        #                                         addresses=core.Fn.select(
-        #                                             0,
-        #                                             self.vpc.vpc_ipv6_cidr_blocks
-        #                                         )
-        #                                     )
-        #                                 ],
-        #                                 source_ports=[
-        #                                     netfw.CfnRuleGroup.PortRangeProperty(
-        #                                         from_port=0,
-        #                                         to_port=65535
-        #                                     )
-        #                                 ]
-        #                             )
-        #                         )
-        #                     ]
-        #                 )
-        #             ]
-        #         )
-        #     )
-        # )
-        # # create rule group
-        # self.netfwrulegrpstateless = netfw.CfnRuleGroup(
-        #     self,
-        #     f"{construct_id}MyNetFWRuleGrpStateless",
-        #     capacity=netfwrlgrpcap,
-        #     rule_group_name=(
-        #         f"{construct_id}MyNetFWRuleGrpStateless"
-        #     ),
-        #     type=(
-        #         "STATELESS"
-        #     ),
-        #     description=(
-        #         "Stateless Rule Group"
-        #     ),
-        #     rule_group=[self.netfwrulegrp]
-        # )
+        self.netfwrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
+            rule_variables=None,
+            rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                rules_source_list=None,
+                stateful_rules=None,
+                stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
+                    stateless_rules=[
+                        netfw.CfnRuleGroup.StatelessRuleProperty(
+                            priority=10,
+                            rule_definition=[
+                                netfw.CfnRuleGroup.RuleDefinitionProperty(
+                                    actions=["aws:forward_to_sfe"],
+                                    match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
+                                        destination_ports=[
+                                            netfw.CfnRuleGroup.PortRangeProperty(
+                                                from_port=80,
+                                                to_port=80
+                                            ),
+                                            netfw.CfnRuleGroup.PortRangeProperty(
+                                                from_port=443,
+                                                to_port=443
+                                            )
+                                        ],
+                                        destinations=[
+                                            netfw.CfnRuleGroup.AddressesProperty(
+                                                addresses=('0.0.0.0/0')
+                                            ),
+                                            netfw.CfnRuleGroup.AddressesProperty(
+                                                addresses=('::/0')
+                                            ),
+                                        ],
+                                        sources=[
+                                            netfw.CfnRuleGroup.AddressesProperty(
+                                                addresses=self.vpc.vpc_cidr_block
+                                            ),
+                                            netfw.CfnRuleGroup.AddressesProperty(
+                                                addresses=core.Fn.select(
+                                                    0,
+                                                    self.vpc.vpc_ipv6_cidr_blocks
+                                                )
+                                            )
+                                        ],
+                                        source_ports=[
+                                            netfw.CfnRuleGroup.PortRangeProperty(
+                                                from_port=0,
+                                                to_port=65535
+                                            )
+                                        ]
+                                    )
+                                )
+                            ]
+                        )
+                    ]
+                )
+            )
+        )
+        # create rule group Stateless
+        self.netfwrulegrpstateless = netfw.CfnRuleGroup(
+            self,
+            f"{construct_id}MyNetFWRuleGrpStateless",
+            capacity=netfwrlgrpcap,
+            rule_group_name=(
+                f"{construct_id}MyNetFWRuleGrpStateless"
+            ),
+            type=(
+                "STATELESS"
+            ),
+            description=(
+                "Stateless Rule Group"
+            ),
+            rule_group=None
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}OutNetFwStatelessGrp",
+            value=self.netfwrulegrpstateless.attr_rule_group_arn,
+            export_name=f"{construct_id}-NetFwStatelessGrp"
+        )
+        # create rule group Stateful
+        self.netfwrulegrpstateful = netfw.CfnRuleGroup(
+            self,
+            f"{construct_id}MyNetFWRuleGrpStateful",
+            capacity=netfwrlgrpcap,
+            rule_group_name=(
+                f"{construct_id}MyNetFWRuleGrpStateful"
+            ),
+            type=(
+                "STATEFUL"
+            ),
+            description=(
+                "Stateful Rule Group"
+            ),
+            rule_group=None
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}OutNetFwStatefulGrp",
+            value=self.netfwrulegrpstateful.attr_rule_group_arn,
+            export_name=f"{construct_id}-NetFwStatefulGrp"
+        )
         #create firewall policy
         self.netfwspolicy = netfw.CfnFirewallPolicy(
 			self,
@@ -118,7 +134,14 @@ class internetfw(core.Stack):
 				),
 				stateless_fragment_default_actions=netfw.CfnFirewallPolicy.StatelessActionsProperty(
         			stateless_actions=["aws:pass"]
-                )
+                ),
+                # stateless_rule_group_references=[
+                #     netfw.CfnFirewallPolicy.StatelessRuleGroupReferenceProperty(
+                #         priority=10,
+                #         resource_arn=self.netfwrulegrpstateless.attr_rule_group_arn
+                #     )
+                # ],
+                # stateful_rule_group_references=
 			)
         )
         self.netfwspolicy.add_property_override('FirewallPolicy.StatelessDefaultActions', ["aws:pass"])
@@ -128,9 +151,9 @@ class internetfw(core.Stack):
             self,
             f"{construct_id}OutNetworkFirewallPolicy",
             value=self.netfwspolicy.attr_firewall_policy_arn,
-            export_name=f"{construct_id}:NetworkFirewallPolicy"
+            export_name=f"{construct_id}-NetworkFirewallPolicy"
         )
-        self.netfwprop = netfw.CfnFirewall(
+        self.netfirewall = netfw.CfnFirewall(
             self,
             f"{construct_id}MyNetFW",
             firewall_name=f"{construct_id}MyNetFW",
@@ -151,44 +174,75 @@ class internetfw(core.Stack):
         core.CfnOutput(
             self,
             f"{construct_id}OutNetworkFirewallId",
-            value=self.netfwprop.attr_firewall_id,
-            export_name=f"{construct_id}:NetworkFirewallId"
+            value=self.netfirewall.attr_firewall_id,
+            export_name=f"{construct_id}-NetworkFirewallId"
         )
         core.CfnOutput(
             self,
             f"{construct_id}OutNetworkFirewallArn",
-            value=self.netfwprop.attr_firewall_arn,
-            export_name=f"{construct_id}:NetworkFirewallArn"
+            value=self.netfirewall.attr_firewall_arn,
+            export_name=f"{construct_id}-NetworkFirewallArn"
         )
-        for index, endpointid in enumerate(self.netfwprop.attr_endpoint_ids):
+        # create route table for incoming traffic
+        self.incomingrt = ec2.CfnRouteTable(
+            self,
+            f"{construct_id}IncomeRouteTable",
+            vpc_id=self.vpc.vpc_id
+        )
+        # edge association
+        ec2.CfnGatewayRouteTableAssociation(
+            self,
+            f"{construct_id}IncomeRouteTableAssociation",
+            gateway_id=self.vpc.internet_gateway_id,
+            route_table_id=self.incomingrt.ref
+        )
+        endpointlist = self.netfirewall.attr_endpoint_ids
+        index = 0
+        while index <= len(endpointlist):
+            fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
+            fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             core.CfnOutput(
                 self,
-                f"{construct_id}OutNetwFwEndAZ-{id}",
-                value=core.Fn.select(
-                    0,
-                    core.Fn.split(
-                        ":",
-                        core.Fn.select(
-                                index,
-                                self.netfwprop.attr_endpoint_ids,
-                        )
-                    )
-                ),
-                export_name=f"{construct_id}OutNetwFwEndAZ-{index}"
-            )
-            core.CfnOutput(
-                self,
-                f"{construct_id}OutNetwFwEndId-{index}",
-                value=core.Fn.select(
-                    1,
-                    core.Fn.split(
-                        ":",
-                        core.Fn.select(
-                                index,
-                                self.netfwprop.attr_endpoint_ids,
-                        )
-                    )
-                ),
-                export_name=f"{construct_id}NetwFwEndId-{index}"
-            )
+                f"{construct_id}OutNetwFwEnd-{index}",
+                value=core.Fn.select(index, core.Token.as_list(self.netfirewall.attr_endpoint_ids)),
+                export_name=f"NetwFwEnd-{index}"
+            ).override_logical_id(new_logical_id=f"self.fwendpoint-{index}")
+            index = index + 1
 
+class fwroutes(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, netfwnum = core.CfnOutput, vpc = ec2.Vpc, netfw = netfw.CfnFirewall, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.vpc = vpc
+        self.netfirewall = netfw
+        self.netfwnum = netfwnum.value
+        self.incomingrt = ec2.CfnRouteTable(
+            self,
+            f"{construct_id}IncomeRouteTable",
+            vpc_id=self.vpc.vpc_id
+        )
+        # edge association
+        ec2.CfnGatewayRouteTableAssociation(
+            self,
+            f"{construct_id}IncomeRouteTableAssociation",
+            gateway_id=self.vpc.internet_gateway_id,
+            route_table_id=self.incomingrt.ref
+        )
+        index = 0
+        while index <= int(self.netfwnum):
+            fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
+            fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
+            for id2, subnetid in enumerate(self.vpc.select_subnets(subnet_group_name='Public').subnets):
+                core.CfnCondition(
+                    self,
+                    f"{construct_id}ConditionAZ{index}{id2}",
+                    expression=core.Fn.condition_equals(lhs=fwendpoint_az,rhs=subnetid.availability_zone)
+                ).override_logical_id(new_logical_id=f"ConditionAZ{index}{id2}")
+                ec2.CfnRoute(
+                    self,
+                    f"{construct_id}Route{index}-{id2}",
+                    route_table_id=self.incomingrt.ref,
+                    vpc_endpoint_id=fwendpoint_id,
+                    destination_cidr_block=subnetid.ipv4_cidr_block,
+                ).add_override('Condition', f"ConditionAZ{index}{id2}")
+            index = index + 1
