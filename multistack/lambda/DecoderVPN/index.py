@@ -164,162 +164,164 @@ def lambda_handler(event, context):
                 dpd_retry = tun['ipsec']['dead_peer_detection']['retries']
                 # generate config files
                 # secret file for racoon
+                output = ('#Tunnel {0}\n{1}\t{2}\n'.format(tnum, vgw_out_addr, ike_pre_shared_key))
                 mycfgfile = f"{mylocalfolder}{vpnid}.secrets"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {0}\n{1}\t{2}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # secret file for openswan/libreswan
+                output = ('#Tunnel {0}\n{1} {2} : PSK "{3}"\n'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {0}\n{1} {2} : PSK "{3}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # racoon.conf
+                output = templaterac.render(
+                    tnum = tnum,
+                    vgw_out_addr = vgw_out_addr,
+                    ike_mode = ike_mode,
+                    ike_lifetime = ike_lifetime,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_perfect_forward_secrecy = ike_perfect_forward_secrecy,
+                    dpd_delay = dpd_delay,
+                    dpd_retry = dpd_retry,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    ipsec_perfect_forward_secrecy = ipsec_perfect_forward_secrecy,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = '_'.join(ipsec_authentication_protocol.split('-')[:2]),
+                    ipsec_lifetime = ipsec_lifetime
+                )
                 mycfgfile = f"{mylocalfolder}racoon.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templaterac.render(
-                        tnum = tnum,
-                        vgw_out_addr = vgw_out_addr,
-                        ike_mode = ike_mode,
-                        ike_lifetime = ike_lifetime,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_perfect_forward_secrecy = ike_perfect_forward_secrecy,
-                        dpd_delay = dpd_delay,
-                        dpd_retry = dpd_retry,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        ipsec_perfect_forward_secrecy = ipsec_perfect_forward_secrecy,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = '_'.join(ipsec_authentication_protocol.split('-')[:2]),
-                        ipsec_lifetime = ipsec_lifetime
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec-tools.conf
+                output = templateips.render(
+                    tnum = tnum,
+                    localcidr = localcidr,
+                    remotecidr = remotecidr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr
+                )
                 mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templateips.render(
-                        tnum = tnum,
-                        localcidr = localcidr,
-                        remotecidr = remotecidr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # vpnid.conf
+                output = templatefsw.render(
+                    tnum = tnum,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    ipsec_mode = ipsec_mode,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_lifetime = int(ike_lifetime)/3600,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                    ipsec_lifetime = int(ipsec_lifetime)/3600,
+                    dpd_delay = int(dpd_delay),
+                    dpdtimeout = int(dpd_retry)*int(dpd_delay)
+                )
                 mycfgfile = f"{mylocalfolder}{vpnid}.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templatefsw.render(
-                        tnum = tnum,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        ipsec_mode = ipsec_mode,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_lifetime = int(ike_lifetime)/3600,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                        ipsec_lifetime = int(ipsec_lifetime)/3600,
-                        dpd_delay = int(dpd_delay),
-                        dpdtimeout = int(dpd_retry)*int(dpd_delay)
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec.conf
+                output = templateosw.render(
+                    tnum = tnum,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    ipsec_mode = ipsec_mode,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_lifetime = ike_lifetime,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                    ipsec_lifetime = ipsec_lifetime,
+                    dpd_delay = int(dpd_delay),
+                    dpdtimeout = int(dpd_retry)*int(dpd_delay)
+                )
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templateosw.render(
-                        tnum = tnum,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        ipsec_mode = ipsec_mode,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_lifetime = ike_lifetime,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                        ipsec_lifetime = ipsec_lifetime,
-                        dpd_delay = int(dpd_delay),
-                        dpdtimeout = int(dpd_retry)*int(dpd_delay)
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # rc.conf
+                output = templaterc.render(
+                    tnum = tnum,
+                    cgw_in_addr = cgw_in_addr,
+                    vgw_in_addr = vgw_in_addr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    vgw_bgp_ht = vgw_bgp_ht
+                )
                 mycfgfile = f"{mylocalfolder}rc.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templaterc.render(
-                        tnum = tnum,
-                        cgw_in_addr = cgw_in_addr,
-                        vgw_in_addr = vgw_in_addr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        vgw_bgp_ht = vgw_bgp_ht
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 if routetype == 'bgp':
+                    output = templatequa.render(
+                        tnum = tnum,
+                        cgw_bgp_asn = cgw_bgp_asn,
+                        vgw_in_addr = vgw_in_addr,
+                        vgw_bgp_asn = vgw_bgp_asn,
+                        cgw_bgp_ht = cgw_bgp_ht
+                    )
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
                     if tnum == 1:
-                        sys.stdout = open(mycfgfile, 'w')
+                        outputfile = open(mycfgfile, 'w')
                     else:
-                        sys.stdout = open(mycfgfile, 'a')
-                    print(
-                        templatequa.render(
-                            tnum = tnum,
-                            cgw_bgp_asn = cgw_bgp_asn,
-                            vgw_in_addr = vgw_in_addr,
-                            vgw_bgp_asn = vgw_bgp_asn,
-                            cgw_bgp_ht = cgw_bgp_ht
-                        )
-                    )
-                    print('\n')
-                    logger.info('BGP ==> Tunnel: {0}\nCGW-ASN: {1}, VGW-ASN: {2}\nVGW-IntAddr: {3}, HOLD-TIME: {4}'.format(tnum, cgw_bgp_asn, vgw_bgp_asn, vgw_in_addr, cgw_bgp_ht))
+                        outputfile = open(mycfgfile, 'a')
+                    outputfile.write(output)
+                    outputfile.close()
                     logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
             # upload files
@@ -431,162 +433,164 @@ def lambda_handler(event, context):
                 dpd_retry = tun['ipsec']['dead_peer_detection']['retries']
                 # generate config files
                 # secret file for racoon
+                output = ('#Tunnel {0}\n{1}\t{2}\n'.format(tnum, vgw_out_addr, ike_pre_shared_key))
                 mycfgfile = f"{mylocalfolder}{vpnid}.secrets"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {0}\n{1}\t{2}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # secret file for openswan/libreswan
+                output = ('#Tunnel {0}\n{1} {2} : PSK "{3}"\n'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {0}\n{1} {2} : PSK "{3}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # racoon.conf
+                output = templaterac.render(
+                    tnum = tnum,
+                    vgw_out_addr = vgw_out_addr,
+                    ike_mode = ike_mode,
+                    ike_lifetime = ike_lifetime,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_perfect_forward_secrecy = ike_perfect_forward_secrecy,
+                    dpd_delay = dpd_delay,
+                    dpd_retry = dpd_retry,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    ipsec_perfect_forward_secrecy = ipsec_perfect_forward_secrecy,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = '_'.join(ipsec_authentication_protocol.split('-')[:2]),
+                    ipsec_lifetime = ipsec_lifetime
+                )
                 mycfgfile = f"{mylocalfolder}racoon.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templaterac.render(
-                        tnum = tnum,
-                        vgw_out_addr = vgw_out_addr,
-                        ike_mode = ike_mode,
-                        ike_lifetime = ike_lifetime,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_perfect_forward_secrecy = ike_perfect_forward_secrecy,
-                        dpd_delay = dpd_delay,
-                        dpd_retry = dpd_retry,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        ipsec_perfect_forward_secrecy = ipsec_perfect_forward_secrecy,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = '_'.join(ipsec_authentication_protocol.split('-')[:2]),
-                        ipsec_lifetime = ipsec_lifetime
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec-tools.conf
+                output = templateips.render(
+                    tnum = tnum,
+                    localcidr = localcidr,
+                    remotecidr = remotecidr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr
+                )
                 mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templateips.render(
-                        tnum = tnum,
-                        localcidr = localcidr,
-                        remotecidr = remotecidr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # vpnid.conf
+                output = templatefsw.render(
+                    tnum = tnum,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    ipsec_mode = ipsec_mode,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_lifetime = int(ike_lifetime)/3600,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                    ipsec_lifetime = int(ipsec_lifetime)/3600,
+                    dpd_delay = int(dpd_delay),
+                    dpdtimeout = int(dpd_retry)*int(dpd_delay)
+                )
                 mycfgfile = f"{mylocalfolder}{vpnid}.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templatefsw.render(
-                        tnum = tnum,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        ipsec_mode = ipsec_mode,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_lifetime = int(ike_lifetime)/3600,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                        ipsec_lifetime = int(ipsec_lifetime)/3600,
-                        dpd_delay = int(dpd_delay),
-                        dpdtimeout = int(dpd_retry)*int(dpd_delay)
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec.conf
+                output = templateosw.render(
+                    tnum = tnum,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_cidr = cgw_in_cidr,
+                    vgw_in_addr = vgw_in_addr,
+                    vgw_in_cidr = vgw_in_cidr,
+                    ipsec_mode = ipsec_mode,
+                    ike_encryption_protocol = ike_encryption_protocol,
+                    ike_authentication_protocol = ike_authentication_protocol,
+                    ike_lifetime = ike_lifetime,
+                    ipsec_encryption_protocol = ipsec_encryption_protocol,
+                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                    ipsec_lifetime = ipsec_lifetime,
+                    dpd_delay = int(dpd_delay),
+                    dpdtimeout = int(dpd_retry)*int(dpd_delay)
+                )
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templateosw.render(
-                        tnum = tnum,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        cgw_in_addr = cgw_in_addr,
-                        cgw_in_cidr = cgw_in_cidr,
-                        vgw_in_addr = vgw_in_addr,
-                        vgw_in_cidr = vgw_in_cidr,
-                        ipsec_mode = ipsec_mode,
-                        ike_encryption_protocol = ike_encryption_protocol,
-                        ike_authentication_protocol = ike_authentication_protocol,
-                        ike_lifetime = ike_lifetime,
-                        ipsec_encryption_protocol = ipsec_encryption_protocol,
-                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                        ipsec_lifetime = ipsec_lifetime,
-                        dpd_delay = int(dpd_delay),
-                        dpdtimeout = int(dpd_retry)*int(dpd_delay)
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # rc.conf
+                output = templaterc.render(
+                    tnum = tnum,
+                    cgw_in_addr = cgw_in_addr,
+                    vgw_in_addr = vgw_in_addr,
+                    mylocalip = mylocalip,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    vgw_bgp_ht = vgw_bgp_ht
+                )
                 mycfgfile = f"{mylocalfolder}rc.conf"
                 if tnum == 1:
-                    sys.stdout = open(mycfgfile, 'w')
+                    outputfile = open(mycfgfile, 'w')
                 else:
-                    sys.stdout = open(mycfgfile, 'a')
-                print(
-                    templaterc.render(
-                        tnum = tnum,
-                        cgw_in_addr = cgw_in_addr,
-                        vgw_in_addr = vgw_in_addr,
-                        mylocalip = mylocalip,
-                        cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr,
-                        vgw_bgp_ht = vgw_bgp_ht
-                    )
-                )
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
                 logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 if routetype == 'bgp':
+                    output = templatequa.render(
+                        tnum = tnum,
+                        cgw_bgp_asn = cgw_bgp_asn,
+                        vgw_in_addr = vgw_in_addr,
+                        vgw_bgp_asn = vgw_bgp_asn,
+                        cgw_bgp_ht = cgw_bgp_ht
+                    )
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
                     if tnum == 1:
-                        sys.stdout = open(mycfgfile, 'w')
+                        outputfile = open(mycfgfile, 'w')
                     else:
-                        sys.stdout = open(mycfgfile, 'a')
-                    print(
-                        templatequa.render(
-                            tnum = tnum,
-                            cgw_bgp_asn = cgw_bgp_asn,
-                            vgw_in_addr = vgw_in_addr,
-                            vgw_bgp_asn = vgw_bgp_asn,
-                            cgw_bgp_ht = cgw_bgp_ht
-                        )
-                    )
-                    print('\n')
-                    logger.info('BGP ==> Tunnel: {0}\nCGW-ASN: {1}, VGW-ASN: {2}\nVGW-IntAddr: {3}, HOLD-TIME: {4}'.format(tnum, cgw_bgp_asn, vgw_bgp_asn, vgw_in_addr, cgw_bgp_ht))
+                        outputfile = open(mycfgfile, 'a')
+                    outputfile.write(output)
+                    outputfile.close()
                     logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
             # upload files
