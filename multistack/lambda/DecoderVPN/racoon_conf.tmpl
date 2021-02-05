@@ -26,6 +26,7 @@ listen
 	isakmp {{ mylocalip }} [500];
 	isakmp_natt {{ mylocalip }} [4500];
 {% endif %}
+
 {% if mylocalip == "" %}
 	isakmp {{ cgw_out_addr }} [500];
 {% endif %}
@@ -33,6 +34,7 @@ listen
 	adminsock disabled;
 }
 {% endif %}
+#tunnel# {{ tnum }}
 remote {{ vgw_out_addr }} {
 	exchange_mode {{ ike_mode   }};
 {% if mylocalip != "" %}

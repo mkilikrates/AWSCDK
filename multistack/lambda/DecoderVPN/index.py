@@ -104,21 +104,27 @@ def lambda_handler(event, context):
             with open('racoon_conf.tmpl') as f:
                 racoon_conf = f.read()
             templaterac = Template(racoon_conf)
+            f.close()
             with open('ipsec_tools_conf.tmpl') as f:
                 ipsec_tools_conf = f.read()
             templateips = Template(ipsec_tools_conf)
+            f.close()
             with open('ipsec_conf_fsw.tmpl') as f:
                 ipsec_conf_fsw = f.read()
             templatefsw = Template(ipsec_conf_fsw)
+            f.close()
             with open('ipsec_conf_osw.tmpl') as f:
                 ipsec_conf_osw = f.read()
             templateosw = Template(ipsec_conf_osw)
+            f.close()
             with open('bgpd_conf.tmpl') as f:
                 bgpd_conf = f.read()
             templatequa = Template(bgpd_conf)
+            f.close()
             with open('rc_conf.tmpl') as f:
                 rc_conf = f.read()
             templaterc = Template(rc_conf)
+            f.close()
             # parse configuration
             myvpnconfig = vpn['VpnConnections'][0]['CustomerGatewayConfiguration']
             myvpnxml = xmltodict.parse(myvpnconfig)
@@ -127,6 +133,7 @@ def lambda_handler(event, context):
             tnum = 1
             for tun in tunnels:
                 # get variables
+                logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                 cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
@@ -163,6 +170,7 @@ def lambda_handler(event, context):
                 else:
                     sys.stdout = open(mycfgfile, 'a')
                 print('#Tunnel {0}\n{1}\t{2}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # secret file for openswan/libreswan
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 if tnum == 1:
@@ -170,6 +178,7 @@ def lambda_handler(event, context):
                 else:
                     sys.stdout = open(mycfgfile, 'a')
                 print('#Tunnel {0}\n{1} {2} : PSK "{3}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # racoon.conf
                 mycfgfile = f"{mylocalfolder}racoon.conf"
                 if tnum == 1:
@@ -199,6 +208,7 @@ def lambda_handler(event, context):
                         ipsec_lifetime = ipsec_lifetime
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec-tools.conf
                 mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
                 if tnum == 1:
@@ -219,6 +229,7 @@ def lambda_handler(event, context):
                         vgw_out_addr = vgw_out_addr
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # vpnid.conf
                 mycfgfile = f"{mylocalfolder}{vpnid}.conf"
                 if tnum == 1:
@@ -245,6 +256,7 @@ def lambda_handler(event, context):
                         dpdtimeout = int(dpd_retry)*int(dpd_delay)
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec.conf
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 if tnum == 1:
@@ -271,6 +283,7 @@ def lambda_handler(event, context):
                         dpdtimeout = int(dpd_retry)*int(dpd_delay)
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # rc.conf
                 mycfgfile = f"{mylocalfolder}rc.conf"
                 if tnum == 1:
@@ -284,9 +297,11 @@ def lambda_handler(event, context):
                         vgw_in_addr = vgw_in_addr,
                         mylocalip = mylocalip,
                         cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr
+                        vgw_out_addr = vgw_out_addr,
+                        vgw_bgp_ht = vgw_bgp_ht
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 if routetype == 'bgp':
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
@@ -298,13 +313,15 @@ def lambda_handler(event, context):
                         templatequa.render(
                             tnum = tnum,
                             cgw_bgp_asn = cgw_bgp_asn,
-                            cgw_bgp_ht = cgw_bgp_ht,
                             vgw_in_addr = vgw_in_addr,
-                            vgw_bgp_asn = vgw_bgp_asn
+                            vgw_bgp_asn = vgw_bgp_asn,
+                            cgw_bgp_ht = cgw_bgp_ht
                         )
                     )
+                    print('\n')
+                    logger.info('BGP ==> Tunnel: {0}\nCGW-ASN: {1}, VGW-ASN: {2}\nVGW-IntAddr: {3}, HOLD-TIME: {4}'.format(tnum, cgw_bgp_asn, vgw_bgp_asn, vgw_in_addr, cgw_bgp_ht))
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
-            f.close()
             # upload files
             # racoon.conf
             mycfgfile = f"{mylocalfolder}racoon.conf"
@@ -329,6 +346,7 @@ def lambda_handler(event, context):
             if routetype == 'bgp':
                 # bgp.conf
                 mycfgfile = f"{mylocalfolder}bgp.conf"
+                myobj = f"{mys3vpnfolder}bgp.conf"
                 fileupload(mycfgfile, bucketname, myobj)
             # vpnid.secrets
             mycfgfile = f"{mylocalfolder}{vpnid}.secrets"
@@ -346,26 +364,34 @@ def lambda_handler(event, context):
         else:
             phyresId = event['PhysicalResourceId']
             # get vpn configuration
-            describevpn(vpnid)
+            vpn = describevpn(vpnid)
+            # create config folder to vpn files
+            createfolder(bucketname,mys3vpnfolder)
             # read template files
             with open('racoon_conf.tmpl') as f:
                 racoon_conf = f.read()
             templaterac = Template(racoon_conf)
+            f.close()
             with open('ipsec_tools_conf.tmpl') as f:
                 ipsec_tools_conf = f.read()
             templateips = Template(ipsec_tools_conf)
+            f.close()
             with open('ipsec_conf_fsw.tmpl') as f:
                 ipsec_conf_fsw = f.read()
             templatefsw = Template(ipsec_conf_fsw)
+            f.close()
             with open('ipsec_conf_osw.tmpl') as f:
                 ipsec_conf_osw = f.read()
             templateosw = Template(ipsec_conf_osw)
+            f.close()
             with open('bgpd_conf.tmpl') as f:
                 bgpd_conf = f.read()
             templatequa = Template(bgpd_conf)
+            f.close()
             with open('rc_conf.tmpl') as f:
                 rc_conf = f.read()
             templaterc = Template(rc_conf)
+            f.close()
             # parse configuration
             myvpnconfig = vpn['VpnConnections'][0]['CustomerGatewayConfiguration']
             myvpnxml = xmltodict.parse(myvpnconfig)
@@ -374,6 +400,7 @@ def lambda_handler(event, context):
             tnum = 1
             for tun in tunnels:
                 # get variables
+                logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                 cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
@@ -409,14 +436,16 @@ def lambda_handler(event, context):
                     sys.stdout = open(mycfgfile, 'w')
                 else:
                     sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {1}\n{2}\t{3}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                print('#Tunnel {0}\n{1}\t{2}'.format(tnum, vgw_out_addr, ike_pre_shared_key))
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # secret file for openswan/libreswan
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 if tnum == 1:
                     sys.stdout = open(mycfgfile, 'w')
                 else:
                     sys.stdout = open(mycfgfile, 'a')
-                print('#Tunnel {1}\n{2} {3} : PSK "{4}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                print('#Tunnel {0}\n{1} {2} : PSK "{3}"'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # racoon.conf
                 mycfgfile = f"{mylocalfolder}racoon.conf"
                 if tnum == 1:
@@ -446,6 +475,7 @@ def lambda_handler(event, context):
                         ipsec_lifetime = ipsec_lifetime
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec-tools.conf
                 mycfgfile = f"{mylocalfolder}ipsec-tools.conf"
                 if tnum == 1:
@@ -466,6 +496,7 @@ def lambda_handler(event, context):
                         vgw_out_addr = vgw_out_addr
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # vpnid.conf
                 mycfgfile = f"{mylocalfolder}{vpnid}.conf"
                 if tnum == 1:
@@ -492,6 +523,7 @@ def lambda_handler(event, context):
                         dpdtimeout = int(dpd_retry)*int(dpd_delay)
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # ipsec.conf
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 if tnum == 1:
@@ -518,6 +550,7 @@ def lambda_handler(event, context):
                         dpdtimeout = int(dpd_retry)*int(dpd_delay)
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # rc.conf
                 mycfgfile = f"{mylocalfolder}rc.conf"
                 if tnum == 1:
@@ -531,9 +564,11 @@ def lambda_handler(event, context):
                         vgw_in_addr = vgw_in_addr,
                         mylocalip = mylocalip,
                         cgw_out_addr = cgw_out_addr,
-                        vgw_out_addr = vgw_out_addr
+                        vgw_out_addr = vgw_out_addr,
+                        vgw_bgp_ht = vgw_bgp_ht
                     )
                 )
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 if routetype == 'bgp':
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
@@ -545,14 +580,16 @@ def lambda_handler(event, context):
                         templatequa.render(
                             tnum = tnum,
                             cgw_bgp_asn = cgw_bgp_asn,
-                            cgw_bgp_ht = cgw_bgp_ht,
                             vgw_in_addr = vgw_in_addr,
-                            vgw_bgp_asn = vgw_bgp_asn
+                            vgw_bgp_asn = vgw_bgp_asn,
+                            cgw_bgp_ht = cgw_bgp_ht
                         )
                     )
+                    print('\n')
+                    logger.info('BGP ==> Tunnel: {0}\nCGW-ASN: {1}, VGW-ASN: {2}\nVGW-IntAddr: {3}, HOLD-TIME: {4}'.format(tnum, cgw_bgp_asn, vgw_bgp_asn, vgw_in_addr, cgw_bgp_ht))
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
-            f.close()
-            # upload files overwrite old
+            # upload files
             # racoon.conf
             mycfgfile = f"{mylocalfolder}racoon.conf"
             myobj = f"{mys3vpnfolder}racoon.conf"

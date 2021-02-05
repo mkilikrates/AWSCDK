@@ -24,6 +24,7 @@ class main(core.Stack):
         res = res
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        resclass = resmap['Mappings']['Resources'][res]['CLASS']
         mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         mincap = resmap['Mappings']['Resources'][res]['min']
@@ -89,7 +90,10 @@ class main(core.Stack):
         self.asg = asg.AutoScalingGroup(
             self,
             f"{construct_id}:MyASG",
-            instance_type=ec2.InstanceType(ressize),
+            instance_type=ec2.InstanceType.of(
+                instance_class=ec2.InstanceClass(resclass),
+                instance_size=ec2.InstanceSize(ressize)
+            ),
             machine_image=ec2.AmazonLinuxImage(
                 user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,

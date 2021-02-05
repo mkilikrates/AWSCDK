@@ -1,3 +1,4 @@
+#tunnel# {{ tnum }}
 ifconfig gif{{ tnum }} destroy
 ifconfig gif{{ tnum }} create
 ifconfig gif{{ tnum }} {{ cgw_in_addr }} {{ vgw_in_addr }} netmask 255.255.255.252
@@ -7,4 +8,3 @@ ifconfig gif{{ tnum }} tunnel {{ cgw_out_addr }} {{ vgw_out_addr }}
 {% if mylocalip != "" %}
 ifconfig gif{{ tnum }} tunnel {{ mylocalip }} {{ vgw_out_addr }}
 {% endif %}
-

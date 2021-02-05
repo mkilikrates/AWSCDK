@@ -1,7 +1,8 @@
 {% if tnum == 1 %}
-router bgp {{ cgw_bgp_asn }}
-timers 5 {{cgw_bgp_ht}}
+ router bgp {{ cgw_bgp_asn }}
+ timers 5 {{cgw_bgp_ht}}
 {% endif %}
+! tunnel# {{ tnum }}
  neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
  neighbor {{ vgw_in_addr }} next-hop-self
 !

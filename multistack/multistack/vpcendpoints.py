@@ -2,10 +2,11 @@ import os
 import json
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_iam as iam,
     core,
 )
-account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
-region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+account = core.Aws.ACCOUNT_ID
+region = core.Aws.REGION
 
 class vpcebasicv4(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
@@ -98,13 +99,29 @@ class vpcebasicv4(core.Stack):
             ),
             security_groups=[self.vpcesg]
         )
+        self.iampolS3VpcEnd = iam.PolicyStatement(
+            actions=[
+                "s3:*"
+            ],
+            effect=iam.Effect.ALLOW,
+            resources=[
+                "*"
+            ],
+            principals=[
+                iam.AnyPrincipal()
+            ],
+            conditions=(
+                { "StringLike" : { "ec2:SourceInstanceARN" : f"arn:aws:ec2:*:{account}:instance/*" } }
+            )
+        )
         #S3
         ec2.GatewayVpcEndpoint(
             self,
             f"{construct_id}:S3Endpoint",
             vpc=self.vpc,
             service=ec2.GatewayVpcEndpointAwsService.S3,
-        )
+        ).add_to_policy(self.iampolS3VpcEnd)
+
 class vpcefreev4(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
