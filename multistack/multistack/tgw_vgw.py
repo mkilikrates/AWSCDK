@@ -83,7 +83,7 @@ class mygw(core.Stack):
                 self.gwId = core.CfnOutput(
                     self,
                     "gwId",
-                    value=self.gw,
+                    value=self.gw.ref,
                     export_name=f"{construct_id}:gwId"
                 )
             # attach transit gateway to vpc

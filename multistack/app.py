@@ -21,17 +21,17 @@ myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envir
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = 'us-east-1')
 remoteregion = 'us-east-1'
 route = 'bgp'
+gwtype = 'vgw'
 app = core.App()
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpcpubiso', cidrid = 0, natgw = 0, maxaz = 2, stack = 'Ipv4')
+VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 3, stack = 'Ipv4')
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, endptkind = 'freeonly', vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastionsimple', preflst = True, allowsg = '', allowall = '', vpc = VPCStack.vpc)
-#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastionsimple', preflst = True, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc).add_dependency(VpcEndpointsStack)
-#VPCStack2 = VPC(app, "MY-VPC2", env=myenv2, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 3, stack = 'Ipv4')
+#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastionsimple', preflst = True, allowsg = '', allowall = '', vpc = VPCStack.vpc)
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv2, res = 'bastionsimple', preflst = True, allowsg = '', allowall = '', vpc = VPCStack2.vpc)
 EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
-GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = 'vgw', gwid = '', route = route, vpc = VPCStack.vpc, bastionsg = BationStack.bastionsg)
-S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = 'vgw', route = route, gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource)
-S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = S2SVPNStack.vpn, res = 's3bucket', vpc = VPCStack.vpc)
+GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', route = route, vpc = VPCStack.vpc, bastionsg = BationStack.bastionsg)
+S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncust', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource)
+#S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = S2SVPNStack.vpn, res = 's3bucket', vpc = VPCStack.vpc)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastionsimple', preflst = True, allowsg = '', allowall = '', vpc = VPCStack.vpc)
 #ELBStack = alb(app, "MY-ELB", env=myenv, res = 'albfe', preflst = False, allowsg = '', allowall = 443, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 #VPCStack2 = VPC(app, "MY-VPC2", env=myenv, region='us-east-1', cidrid = 0, natgw = 1, maxaz = 2)

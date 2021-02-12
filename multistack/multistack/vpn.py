@@ -8,6 +8,8 @@ from aws_cdk import (
     aws_route53_targets as r53tgs,
     aws_logs as log,
     aws_iam as iam,
+    aws_lambda as lambda_,
+    aws_lambda_python as lpython,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -132,11 +134,13 @@ class cvpn(core.Stack):
             description="Allow All"
         )
 class s2svpn(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, gwid, cgwaddr, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, funct, gwtype, gwid, cgwaddr, route, ipfamily, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.cgwaddr = cgwaddr.get_att_string("PublicIp")
+        ipfamily = ipfamily
         self.gwid = gwid
+        res = res
         if route == 'bgp':
             self.route = False
         if route == 'static':
@@ -154,28 +158,241 @@ class s2svpn(core.Stack):
             value=self.cgw.ref,
             export_name=f"{construct_id}:mycgw",
         )
-        if gwtype == 'vgw':
-            self.vpn = ec2.CfnVPNConnection(
+        if res == '':
+            if gwtype == 'vgw':
+                self.vpn = ec2.CfnVPNConnection(
+                    self,
+                    f"{construct_id}:vpn",
+                    customer_gateway_id=self.cgw.ref,
+                    type=('ipsec.1'),
+                    static_routes_only=self.route,
+                    vpn_gateway_id=self.gwid.gateway_id
+                )
+            if gwtype == 'tgw':
+                self.vpn = ec2.CfnVPNConnection(
+                    self,
+                    f"{construct_id}:vpn",
+                    customer_gateway_id=self.cgw.ref,
+                    type=('ipsec.1'),
+                    static_routes_only=self.route,
+                    transit_gateway_id=self.gwid.ref
+                )
+            self.vpnid = core.CfnOutput(
                 self,
-                f"{construct_id}:vpn",
-                customer_gateway_id=self.cgw.ref,
-                type=('ipsec.1'),
-                static_routes_only=self.route,
-                vpn_gateway_id=self.gwid.gateway_id
+                f"{construct_id}:myvpn",
+                value=self.vpn.ref,
+                export_name=f"{construct_id}:myvpn",
             )
-        if gwtype == 'tgw':
-            self.vpn = ec2.CfnVPNConnection(
+        else:
+            # Get configuration
+            myvpnopts = {}
+            vpnaccel = resmap['Mappings']['Resources'][res]['EnableAcceleration']
+            myvpnopts['TunnelOptions'] = []
+            myvpnopts['EnableAcceleration'] = {}
+            myvpnopts['EnableAcceleration'] = vpnaccel
+            myvpnopts['StaticRoutesOnly'] = {}
+            if route == "bgp":
+                myvpnopts['StaticRoutesOnly'] = False
+            else:
+                myvpnopts['StaticRoutesOnly'] = True
+            if ipfamily == 'ipv6':
+                vpnipfamily = 'ipv6'
+                myvpnopts['LocalIpv6NetworkCidr'] = {}
+                myvpnopts['RemoteIpv6NetworkCidr'] = {}
+                if resmap['Mappings']['Resources'][res]['LocalIpv6NetworkCidr']:
+                    myvpnopts['LocalIpv6NetworkCidr'] = resmap['Mappings']['Resources'][res]['LocalIpv6NetworkCidr']
+                else:
+                    myvpnopts['LocalIpv6NetworkCidr'] = '::/0'
+                if resmap['Mappings']['Resources'][res]['RemoteIpv6NetworkCidr']:
+                    myvpnopts['RemoteIpv6NetworkCidr'] = resmap['Mappings']['Resources'][res]['RemoteIpv6NetworkCidr']
+                else:
+                    myvpnopts['RemoteIpv6NetworkCidr'] = '::/0'
+            else:
+                vpnipfamily = 'ipv4'
+                if gwtype == 'tgw':
+                    myvpnopts['LocalIpv4NetworkCidr'] = {}
+                    myvpnopts['RemoteIpv4NetworkCidr'] = {}
+                    if 'LocalIpv4NetworkCidr' in resmap['Mappings']['Resources'][res]:
+                        myvpnopts['LocalIpv4NetworkCidr'] = resmap['Mappings']['Resources'][res]['LocalIpv4NetworkCidr']
+                    else:
+                        myvpnopts['LocalIpv4NetworkCidr'] = '0.0.0.0/0'
+                    if 'RemoteIpv4NetworkCidr' in resmap['Mappings']['Resources'][res]:
+                        myvpnopts['RemoteIpv4NetworkCidr'] = resmap['Mappings']['Resources'][res]['RemoteIpv4NetworkCidr']
+                    else:
+                        myvpnopts['RemoteIpv4NetworkCidr'] = '0.0.0.0/0'
+            if gwtype == 'tgw':
+                myvpnopts['TunnelInsideIpVersion'] = {}
+                myvpnopts['TunnelInsideIpVersion'] = vpnipfamily
+            myvpnopts['TunnelOptions'] = []
+            for i in range (2):
+                myvpnopts['TunnelOptions'].append({})
+                if 'TunnelInsideCidr' in resmap['Mappings']['Resources'][res]['Tunnels'][i] and vpnipfamily == 'ipv4':
+                    myvpnopts['TunnelOptions'][i]['TunnelInsideCidr'] = {}
+                    myvpnopts['TunnelOptions'][i]['TunnelInsideCidr'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['TunnelInsideCidr']
+                if 'TunnelInsideIpv6Cidr' in resmap['Mappings']['Resources'][res]['Tunnels'][i] and vpnipfamily == 'ipv6':
+                    myvpnopts['TunnelOptions'][i]['TunnelInsideIpv6Cidr'] = {}
+                    myvpnopts['TunnelOptions'][i]['TunnelInsideIpv6Cidr'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['TunnelInsideIpv6Cidr']
+                if 'PreSharedKey' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['PreSharedKey'] = {}
+                    myvpnopts['TunnelOptions'][i]['PreSharedKey'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['PreSharedKey']
+                if 'Phase1LifetimeSeconds' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase1LifetimeSeconds'] = {}
+                    myvpnopts['TunnelOptions'][i]['Phase1LifetimeSeconds'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase1LifetimeSeconds']
+                if 'Phase2LifetimeSeconds' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase2LifetimeSeconds'] = {}
+                    myvpnopts['TunnelOptions'][i]['Phase2LifetimeSeconds'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase2LifetimeSeconds']
+                if 'RekeyMarginTimeSeconds' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['RekeyMarginTimeSeconds'] = {}
+                    myvpnopts['TunnelOptions'][i]['RekeyMarginTimeSeconds'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['RekeyMarginTimeSeconds']
+                if 'RekeyFuzzPercentage' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['RekeyFuzzPercentage'] = {}
+                    myvpnopts['TunnelOptions'][i]['RekeyFuzzPercentage'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['RekeyFuzzPercentage']
+                if 'ReplayWindowSize' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['ReplayWindowSize'] = {}
+                    myvpnopts['TunnelOptions'][i]['ReplayWindowSize'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['ReplayWindowSize']
+                if 'DPDTimeoutSeconds' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['DPDTimeoutSeconds'] = {}
+                    myvpnopts['TunnelOptions'][i]['DPDTimeoutSeconds'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['DPDTimeoutSeconds']
+                if 'DPDTimeoutAction' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['DPDTimeoutAction'] = {}
+                    myvpnopts['TunnelOptions'][i]['DPDTimeoutAction'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['DPDTimeoutAction']
+                if 'Phase1EncryptionAlgorithms' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase1EncryptionAlgorithms'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase1EncryptionAlgorithms'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase1EncryptionAlgorithms']
+                if 'Phase1IntegrityAlgorithms' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase1IntegrityAlgorithms'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase1IntegrityAlgorithms'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase1IntegrityAlgorithms']
+                if 'Phase1DHGroupNumbers' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase1DHGroupNumbers'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase1DHGroupNumbers'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase1DHGroupNumbers']
+                if 'Phase2EncryptionAlgorithms' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase2EncryptionAlgorithms'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase2EncryptionAlgorithms'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase2EncryptionAlgorithms']
+                if 'Phase2IntegrityAlgorithms' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase2IntegrityAlgorithms'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase2IntegrityAlgorithms'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase2IntegrityAlgorithms']
+                if 'Phase2DHGroupNumbers' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['Phase2DHGroupNumbers'] = []
+                    myvpnopts['TunnelOptions'][i]['Phase2DHGroupNumbers'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['Phase2DHGroupNumbers']
+                if 'IKEVersions' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['IKEVersions'] = {}
+                    myvpnopts['TunnelOptions'][i]['IKEVersions'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['IKEVersions']
+                if 'StartupAction' in resmap['Mappings']['Resources'][res]['Tunnels'][i]:
+                    myvpnopts['TunnelOptions'][i]['StartupAction'] = {}
+                    myvpnopts['TunnelOptions'][i]['StartupAction'] = resmap['Mappings']['Resources'][res]['Tunnels'][i]['StartupAction']
+            if funct =='':
+                # create Police for lambda function
+                self.mylambdapolicy = iam.PolicyStatement(
+                    actions=[
+                        "ec2:DescribeVpnConnections",
+                        "logs:CreateLogGroup",
+                        "logs:CreateLogStream",
+                        "logs:DescribeLogGroups",
+                        "logs:DescribeLogStreams",
+                        "logs:PutLogEvents"
+                    ],
+                    resources=["*"],
+                    effect=iam.Effect.ALLOW
+                )
+                self.mylambdaEC2VPNpolicy = iam.PolicyStatement(
+                    actions=[
+                        "ec2:ModifyVpnTunnelOptions",
+                        "ec2:ModifyVpnConnectionOptions",
+                        "ec2:ModifyVpnTunnelCertificate",
+                        "ec2:ModifyVpnConnection",
+                        "ec2:DeleteVpnConnection",
+                        "ec2:CreateVpnConnection"
+                    ],
+                    resources=["*"],
+                    effect=iam.Effect.ALLOW
+                )
+                self.mylambdarole = iam.Role(
+                    self,
+                    "LambdaRole",
+                    assumed_by=iam.ServicePrincipal(
+                        'lambda.amazonaws.com'
+                    ),
+                    description=(
+                        'Role for Lambda to create or modify vpn as Custom Resources in CloudFormation'
+                    )
+                )
+                self.mylambdarole.add_to_policy(self.mylambdapolicy)
+                self.mylambdarole.add_to_policy(self.mylambdaEC2VPNpolicy)
+                # Create Lambda Function
+                self.mylambda = lpython.PythonFunction(
+                    self,
+                    f"{construct_id}:Lambda",
+                    handler="lambda_handler",
+                    timeout=core.Duration.seconds(90),
+                    runtime=lambda_.Runtime.PYTHON_3_8,
+                    description="Lambda to create or modify vpn as Custom Resources in CloudFormation",
+                    entry="lambda/VPNCust/",
+                    role=(self.mylambdarole),
+                    log_retention=log.RetentionDays.ONE_WEEK
+                )
+                core.CfnOutput(
                 self,
-                f"{construct_id}:vpn",
-                customer_gateway_id=self.cgw.ref,
-                type=('ipsec.1'),
-                static_routes_only=self.route,
-                transit_gateway_id=self.gwid.ref
-            )
-        self.vpnid = core.CfnOutput(
-            self,
-            f"{construct_id}:myvpn",
-            value=self.vpn.ref,
-            export_name=f"{construct_id}:myvpn",
-        )
+                f"{construct_id}:LambdaArn",
+                value=self.mylambda.function_arn,
+                export_name=f"{construct_id}:LambdaArn"
+                )
+                #custom resource
+                customopts = {}
+                if gwtype == 'tgw':
+                    customopts = {
+                        "Customer-Gateway-Id" : self.cgw.ref,
+                        "Gateway-Id" : self.gwid.ref,
+                        "Gateway-Type" : gwtype,
+                        "VPNOptions" : myvpnopts
+                    }
+                if gwtype == 'vgw':
+                    customopts = {
+                        "Customer-Gateway-Id" : self.cgw.ref,
+                        "Gateway-Id" : self.gwid.gateway_id,
+                        "Gateway-Type" : gwtype,
+                        "VPNOptions" : myvpnopts
+                    }
+                self.mycustomvpn = core.CustomResource(
+                    self,
+                    f"{construct_id}:CustomVPN",
+                    service_token=self.mylambda.function_arn,
+                    properties=[customopts]
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}:VPNid",
+                    value=self.mycustomvpn.get_att_string("VPNid"),
+                    export_name=f"{construct_id}:VPNid"
+                )
+            else:
+                # custom resource
+                customopts = {}
+                if gwtype == 'tgw':
+                    customopts = {
+                        "Customer-Gateway-Id" : self.cgw.ref,
+                        "Gateway-Id" : self.gwid.ref,
+                        "Gateway-Type" : gwtype,
+                        "VPNOptions" : myvpnopts
+                    }
+                if gwtype == 'vgw':
+                    customopts = {
+                        "Customer-Gateway-Id" : self.cgw.ref,
+                        "Gateway-Id" : self.gwid.gateway_id,
+                        "Gateway-Type" : gwtype,
+                        "VPNOptions" : myvpnopts
+                    }
+                self.mycustomvpn = core.CustomResource(
+                    self,
+                    f"{construct_id}:CustomResource",
+                    service_token=funct,
+                    properties=[customopts]
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}:VPNid",
+                    value=self.mycustomvpn.get_att_string("VPNid"),
+                    export_name=f"{construct_id}:VPNid"
+                )
+
+
 
