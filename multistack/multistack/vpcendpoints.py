@@ -16,22 +16,19 @@ class vpcebasicv4(core.Stack):
         self.vpcstack = vpcstack
         self.endptkind = endptkind
         if self.endptkind == 'freeonly':
-            #S3 Policy
+            # #S3 Policy
             self.iampolS3VpcEnd = iam.PolicyStatement(
                 actions=[
                     "s3:*"
                 ],
-                effect=iam.Effect.DENY,
+                effect=iam.Effect.ALLOW,
                 resources=[
                     "*"
                 ],
                 principals=[
                     iam.AnyPrincipal()
                 ],
-                conditions=(
-                    { "StringNotEquals" : { "aws:SourceVpc" : self.vpc.vpc_id } }
-                ),
-                sid=('Allow-only-VPC-to-use-it')
+                sid=('Allow-all-to-use-it')
             )
             #S3
             ec2.GatewayVpcEndpoint(
