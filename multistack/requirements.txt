@@ -15,4 +15,7 @@ aws_cdk.aws_cloudformation
 aws-cdk.aws-lambda
 aws_cdk.aws_lambda_python
 aws_cdk.aws_networkfirewall
+aws_cdk.aws_ram
+aws_cdk.aws_directoryservice
+aws_cdk.aws_secretsmanager
 -e .
