@@ -3,10 +3,11 @@ import json
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_autoscaling as asg,
+    aws_cloudwatch as cw,
     core,
 )
-account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
-region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+account = core.Aws.ACCOUNT_ID
+region = core.Aws.REGION
 resconf = "resourcesmap.cfg"
 with open(resconf) as resfile:
     resmap = json.load(resfile)
@@ -25,11 +26,12 @@ class main(core.Stack):
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
-        mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        mykey = resmap['Mappings']['Resources'][res]['KEY']
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         mincap = resmap['Mappings']['Resources'][res]['min']
         maxcap = resmap['Mappings']['Resources'][res]['max']
         desircap = resmap['Mappings']['Resources'][res]['desir']
+        resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         usrdata = open(usrdatafile, "r").read()
         # create security group for Auto Scale Group
         self.asgsg = ec2.SecurityGroup(
@@ -63,7 +65,12 @@ class main(core.Stack):
             )
         if preflst == True:
             # get prefix list from file to allow traffic from the office
-            srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
+            mymap = core.CfnMapping(
+                self,
+                f"{construct_id}Map",
+                mapping=zonemap["Mappings"]["RegionMap"]
+            )
+            srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
             self.asgsg.add_ingress_rule(
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()
@@ -101,12 +108,33 @@ class main(core.Stack):
             ),
             vpc=self.vpc,
             security_group=self.asgsg,
-            key_name=mykey,
+            key_name=f"{mykey}{region}",
             desired_capacity=desircap,
             min_capacity=mincap,
             max_capacity=maxcap,
+            group_metrics=[asg.GroupMetrics.all()],
             vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
         )
+        if resmon == True:
+            cw.CfnAlarm(
+                self,
+                f"{construct_id}MyASGAlarm",
+                comparison_operator=("LessThanOrEqualToThreshold"),
+                evaluation_periods=3,
+                actions_enabled=False,
+                datapoints_to_alarm=2,
+                threshold=0,
+                dimensions=[
+                    dict(
+                        name="AutoScalingGroupName",
+                        value=self.asg.auto_scaling_group_name
+                    )
+                ],
+                namespace=("AWS/AutoScaling"),
+                metric_name=("GroupInServiceInstances"),
+                period=core.Duration.minutes(1).to_seconds(),
+                statistic="Minimum",
+            )
         self.asg.scale_on_schedule(
             "PrescaleInTheMorning",
             schedule=asg.Schedule.cron(hour="9", minute="0"),

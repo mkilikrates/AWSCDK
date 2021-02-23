@@ -65,12 +65,6 @@ class myds(core.Stack):
                     value=self.ds.get_att('Alias'),
                     export_name=f"{construct_id}mydsAlias"
                 )
-            # core.CfnOutput(
-            #     self,
-            #     f"{construct_id}{resname}-DnsIpAddresses",
-            #     value=core.Token.as_list(self.ds.get_att('DnsIpAddresses')),
-            #     export_name=f"{construct_id}{resname}-DnsIpAddresses"
-            # )
             index = 0
             while index <= 1:
                 core.CfnOutput(

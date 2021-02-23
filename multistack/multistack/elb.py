@@ -35,6 +35,7 @@ class alb(core.Stack):
         rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
         reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
         restgport = resmap['Mappings']['Resources'][res]['TGPORT']
+        resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         # get hosted zone id
         self.hz = r53.HostedZone.from_lookup(
             self,
@@ -115,16 +116,17 @@ class alb(core.Stack):
                 port=restgport,
                 targets=[tgrt]
             )
-            # create alarm for UnHealthyHostCount
-            self.alarmtargrunhealth = self.tgrp.metric("UnHealthyHostCount")
-            cw.Alarm(
-                self,
-                f"{construct_id}:UnHealthyHostCount",
-                metric=self.alarmtargrunhealth,
-                evaluation_periods=1,
-                threshold=0,
-                comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
-            )
+            if resmon == True:
+                # create alarm for UnHealthyHostCount
+                self.alarmtargrunhealth = self.tgrp.metric("UnHealthyHostCount")
+                cw.Alarm(
+                    self,
+                    f"{construct_id}:UnHealthyHostCount",
+                    metric=self.alarmtargrunhealth,
+                    evaluation_periods=1,
+                    threshold=0,
+                    comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
+                )
         if restype == 'nlb':
             #create nlb
             self.elb = elb.NetworkLoadBalancer(
@@ -155,16 +157,17 @@ class alb(core.Stack):
                 port=restgport,
                 targets=[tgrt]
             )
-            # create alarm for UnHealthyHostCount
-            self.alarmtargrunhealth = self.tgrp.metric_un_healthy_host_count()
-            cw.Alarm(
-                self,
-                f"{construct_id}:UnHealthyHostCount",
-                metric=self.alarmtargrunhealth,
-                evaluation_periods=1,
-                threshold=0,
-                comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
-            )
+            if resmon == True:
+                # create alarm for UnHealthyHostCount
+                self.alarmtargrunhealth = self.tgrp.metric_un_healthy_host_count()
+                cw.Alarm(
+                    self,
+                    f"{construct_id}:UnHealthyHostCount",
+                    metric=self.alarmtargrunhealth,
+                    evaluation_periods=1,
+                    threshold=0,
+                    comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
+                )
         # create alias record target elb
         r53.ARecord(
             self,
