@@ -18,4 +18,5 @@ aws_cdk.aws_networkfirewall
 aws_cdk.aws_ram
 aws_cdk.aws_directoryservice
 aws_cdk.aws_secretsmanager
+aws_cdk.aws_eks
 -e .
