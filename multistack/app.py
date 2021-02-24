@@ -43,5 +43,5 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-EKStack = eks(app, "MYEKS", env=myenv, res = 'myeks', preflst = False, allowsg = '', allowall = '', vpc = VPCStack.vpc)
+EKStack = eks(app, "MYEKS", env=myenv, res = 'myekssimple', res2 = 'myeksAsg', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
 app.synth()

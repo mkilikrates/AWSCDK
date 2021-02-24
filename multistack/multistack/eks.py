@@ -13,7 +13,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EksStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, res2, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -24,9 +24,6 @@ class EksStack(core.Stack):
         resvers = resmap['Mappings']['Resources'][res]['Version']
         resname = resmap['Mappings']['Resources'][res]['NAME']
         resfargt = resmap['Mappings']['Resources'][res]['Fargate']
-        ressize = resmap['Mappings']['Resources'][res]['SIZE']
-        resclass = resmap['Mappings']['Resources'][res]['CLASS']
-        rescap = resmap['Mappings']['Resources'][res]['desir']
         resendp = resmap['Mappings']['Resources'][res]['INTERNET']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         if resendp == True:
@@ -49,6 +46,8 @@ class EksStack(core.Stack):
             eksvers = eks.KubernetesVersion.V1_17
         if resvers == "V1_18":
             eksvers = eks.KubernetesVersion.V1_18
+        if resvers == "V1_19":
+            eksvers = eks.KubernetesVersion.V1_19
         # create security group for Auto Scale Group
         self.aseks = ec2.SecurityGroup(
             self,
@@ -109,20 +108,77 @@ class EksStack(core.Stack):
                 ec2.Peer.any_ipv6(),
                 ec2.Port.tcp(allowall)
             )
-        # create EKS Cluster
-        self.eksclust = eks.Cluster(
-            self,
-            f"{construct_id}EKSCluster",
-            default_capacity=rescap,
-            default_capacity_instance=ec2.InstanceType.of(
-                instance_class=ec2.InstanceClass(resclass),
-                instance_size=ec2.InstanceSize(ressize),
-            ),
-            default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
-            core_dns_compute_type=ekstype,
-            endpoint_access=eksendpt,
-            cluster_name=resname,
-            vpc=self.vpc,
-            vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
-            version=eksvers
-        )
+        if 'desir' in resmap['Mappings']['Resources'][res]:
+            rescap = resmap['Mappings']['Resources'][res]['desir']
+            ressize = resmap['Mappings']['Resources'][res]['SIZE']
+            resclass = resmap['Mappings']['Resources'][res]['CLASS']
+            # create EKS Cluster
+            self.eksclust = eks.Cluster(
+                self,
+                f"{construct_id}EKSCluster",
+                default_capacity=rescap,
+                default_capacity_instance=ec2.InstanceType.of(
+                    instance_class=ec2.InstanceClass(resclass),
+                    instance_size=ec2.InstanceSize(ressize),
+                ),
+                default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
+                core_dns_compute_type=ekstype,
+                endpoint_access=eksendpt,
+                cluster_name=resname,
+                vpc=self.vpc,
+                vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                version=eksvers,
+                security_group=self.aseks,
+            )
+        else:
+            self.eksclust = eks.Cluster(
+                self,
+                f"{construct_id}EKSCluster",
+                default_capacity=0,
+                core_dns_compute_type=ekstype,
+                endpoint_access=eksendpt,
+                cluster_name=resname,
+                vpc=self.vpc,
+                vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                version=eksvers,
+                security_group=self.aseks,
+            )
+            res = res2
+            resname = resmap['Mappings']['Resources'][res]['NAME']
+            restype = resmap['Mappings']['Resources'][res]['Type']
+            mykey = resmap['Mappings']['Resources'][res]['KEY']
+            resendp = resmap['Mappings']['Resources'][res]['INTERNET']
+            ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+            rescap = resmap['Mappings']['Resources'][res]['desir']
+            resmin = resmap['Mappings']['Resources'][res]['min']
+            resmax = resmap['Mappings']['Resources'][res]['max']
+            ressize = resmap['Mappings']['Resources'][res]['SIZE']
+            resclass = resmap['Mappings']['Resources'][res]['CLASS']
+
+            if restype == 'ON_DEMAND':
+                captype = eks.CapacityType.ON_DEMAND
+            if restype == 'SPOT':
+                captype = eks.CapacityType.SPOT
+            self.eksnodeasg = eks.Nodegroup(
+                self,
+                f"{construct_id}EKSNodeGrp",
+                cluster=self.eksclust,
+                capacity_type=captype,
+                desired_size=rescap,
+                instance_types=[
+                    ec2.InstanceType.of(
+                        instance_class=ec2.InstanceClass(resclass),
+                        instance_size=ec2.InstanceSize(ressize),
+                    )
+                ],
+                min_size=resmin,
+                max_size=resmax,
+                nodegroup_name=resname,
+                subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                remote_access=eks.NodegroupRemoteAccess(
+                    ssh_key_name=f"{mykey}{region}",
+                    source_security_groups=[self.allowsg]
+                )
+
+            )
+

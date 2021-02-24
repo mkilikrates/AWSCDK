@@ -2,6 +2,7 @@ import os
 import json
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_iam as iam,
     core,
 )
 account = core.Aws.ACCOUNT_ID
@@ -87,6 +88,7 @@ class bastion(core.Stack):
         resname = resmap['Mappings']['Resources'][res]['NAME']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
+        resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
         mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         usrdata = open(usrdatafile, "r").read()
@@ -114,6 +116,10 @@ class bastion(core.Stack):
                 core.Tags.of(self.bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
         # add my key
         self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        # create instance profile
+        if resmanpol !='':
+            manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
+            self.bastion.instance.role.add_managed_policy(manpol)
         # output
         core.CfnOutput(
             self,
