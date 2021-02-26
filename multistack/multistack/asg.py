@@ -2,6 +2,7 @@ import os
 import json
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_iam as iam,
     aws_autoscaling as asg,
     aws_cloudwatch as cw,
     core,
@@ -32,6 +33,7 @@ class main(core.Stack):
         maxcap = resmap['Mappings']['Resources'][res]['max']
         desircap = resmap['Mappings']['Resources'][res]['desir']
         resmon = resmap['Mappings']['Resources'][res]['MONITOR']
+        resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
         usrdata = open(usrdatafile, "r").read()
         # create security group for Auto Scale Group
         self.asgsg = ec2.SecurityGroup(
@@ -93,28 +95,61 @@ class main(core.Stack):
                 ec2.Peer.any_ipv6(),
                 ec2.Port.tcp(allowall)
             )
-        # create Auto Scalling Group
-        self.asg = asg.AutoScalingGroup(
-            self,
-            f"{construct_id}:MyASG",
-            instance_type=ec2.InstanceType.of(
-                instance_class=ec2.InstanceClass(resclass),
-                instance_size=ec2.InstanceSize(ressize)
-            ),
-            machine_image=ec2.AmazonLinuxImage(
-                user_data=ec2.UserData.custom(usrdata),
-                edition=ec2.AmazonLinuxEdition.STANDARD,
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
-            ),
-            vpc=self.vpc,
-            security_group=self.asgsg,
-            key_name=f"{mykey}{region}",
-            desired_capacity=desircap,
-            min_capacity=mincap,
-            max_capacity=maxcap,
-            group_metrics=[asg.GroupMetrics.all()],
-            vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-        )
+        # create instance profile
+        if resmanpol !='':
+            manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
+            resrole = iam.Role(
+                self,
+                f"{construct_id}ASGRole",
+                assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+                description=f"Role for Auto Scale Group",
+                managed_policies=[manpol]
+            )
+            # create Auto Scalling Group
+            self.asg = asg.AutoScalingGroup(
+                self,
+                f"{construct_id}:MyASG",
+                instance_type=ec2.InstanceType.of(
+                    instance_class=ec2.InstanceClass(resclass),
+                    instance_size=ec2.InstanceSize(ressize)
+                ),
+                machine_image=ec2.AmazonLinuxImage(
+                    user_data=ec2.UserData.custom(usrdata),
+                    edition=ec2.AmazonLinuxEdition.STANDARD,
+                    generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
+                ),
+                vpc=self.vpc,
+                security_group=self.asgsg,
+                key_name=f"{mykey}{region}",
+                desired_capacity=desircap,
+                min_capacity=mincap,
+                max_capacity=maxcap,
+                group_metrics=[asg.GroupMetrics.all()],
+                vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                role=resrole
+            )
+        else:
+            self.asg = asg.AutoScalingGroup(
+                self,
+                f"{construct_id}:MyASG",
+                instance_type=ec2.InstanceType.of(
+                    instance_class=ec2.InstanceClass(resclass),
+                    instance_size=ec2.InstanceSize(ressize)
+                ),
+                machine_image=ec2.AmazonLinuxImage(
+                    user_data=ec2.UserData.custom(usrdata),
+                    edition=ec2.AmazonLinuxEdition.STANDARD,
+                    generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
+                ),
+                vpc=self.vpc,
+                security_group=self.asgsg,
+                key_name=f"{mykey}{region}",
+                desired_capacity=desircap,
+                min_capacity=mincap,
+                max_capacity=maxcap,
+                group_metrics=[asg.GroupMetrics.all()],
+                vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+            )
         if resmon == True:
             cw.CfnAlarm(
                 self,

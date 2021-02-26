@@ -4,7 +4,7 @@ from aws_cdk import core
 from multistack.vpc_empty import VPC as VPC
 from multistack.bastion import bastion as bastion
 from multistack.vpcflow import flowlogs
-from multistack.vpcendpoints import vpcebasicv4 as vpce
+from multistack.vpcendpoints import VPCEStack as vpce
 from multistack.tgw_vgw import mygw
 from multistack.asg import main as asg
 from multistack.elb import alb
@@ -24,12 +24,12 @@ remoteregion = 'us-east-1'
 route = 'bgp'
 gwtype = 'tgw'
 app = core.App()
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 3, stack = 'Ipv4')
-#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, endptkind = 'freeonly', vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
+VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 1, natgw = 1, maxaz = 3, stack = 'Ipv4')
+VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = True, allowsg = '', allowall = '', vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', vpc = VPCStack.vpc)
-#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'apachephphttp2dmz', preflst = True, allowsg = '', allowall = 443, vpc = VPCStack.vpc)
+ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastionsimpleiso', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc).add_dependency(VpcEndpointsStack)
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
-#GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, vpc = VPCStack.vpc, bastionsg = BationStack.bastionsg)
+#GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, vpc = VPCStack.vpc, bastionsg = ASGStack.asgsg)
 #S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncust', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource)
 #S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = S2SVPNStack.mycustomvpn, res = 's3bucket', vpc = VPCStack.vpc)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'apachephphttp2be', preflst = True, allowsg = BationStack.bastionsg, allowall = '443', vpc = VPCStack.vpc)
@@ -43,5 +43,5 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-EKStack = eks(app, "MYEKS", env=myenv, res = 'myekssimple', res2 = 'myeksAsg', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
+#EKStack = eks(app, "MYEKS", env=myenv, res = 'myekssimple', res2 = 'myeksAsg', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
 app.synth()
