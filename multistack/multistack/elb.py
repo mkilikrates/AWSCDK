@@ -3,6 +3,7 @@ import json
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_autoscaling as asg,
+    aws_elasticloadbalancing as clb,
     aws_elasticloadbalancingv2 as elb,
     aws_elasticloadbalancingv2_targets as lbtargets,
     aws_cloudwatch as cw,
@@ -55,6 +56,36 @@ class alb(core.Stack):
                 lbstack = elb.IpAddressType.DUAL_STACK
             else:
                 lbstack = elb.IpAddressType.IPV4
+        if restype == 'clb':
+            # create security group for LB
+            self.lbsg = ec2.SecurityGroup(
+                self,
+                f"{construct_id}:MyLBsg",
+                allow_all_outbound=True,
+                vpc=self.vpc
+            )
+            self.elb = clb.LoadBalancer(
+                self,
+                f"{construct_id}-CLB",
+                vpc=self.vpc,
+                cross_zone=rescrossaz,
+                subnet_selection=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                internet_facing=elbface
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}:ALB DNS",
+                value=self.elb.load_balancer_dns_name
+            )
+            # configure listener
+            self.elblistnrs = self.elb.add_listener(
+                f"{construct_id}-CLB",
+                external_port=reslbport,
+                external_protocol=elb.ApplicationProtocol.HTTPS,
+                internal_port=restgport,
+                
+            )
+
         if restype == 'alb':
             # create security group for LB
             self.lbsg = ec2.SecurityGroup(

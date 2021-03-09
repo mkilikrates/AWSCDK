@@ -3,6 +3,7 @@ import json
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_eks as eks,
+    aws_iam as iam,
     core,
 )
 account = core.Aws.ACCOUNT_ID
@@ -13,7 +14,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EksStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, res2, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -23,7 +24,8 @@ class EksStack(core.Stack):
         res = res
         resvers = resmap['Mappings']['Resources'][res]['Version']
         resname = resmap['Mappings']['Resources'][res]['NAME']
-        resfargt = resmap['Mappings']['Resources'][res]['Fargate']
+        restype = resmap['Mappings']['Resources'][res]['Type']
+        resfargtdns = resmap['Mappings']['Resources'][res]['FargateDNS']
         resendp = resmap['Mappings']['Resources'][res]['INTERNET']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         if resendp == True:
@@ -32,10 +34,10 @@ class EksStack(core.Stack):
             eksendpt = eks.EndpointAccess.PRIVATE
         if resendp == '':
             eksendpt = eks.EndpointAccess.PUBLIC_AND_PRIVATE
-        if resfargt == True:
-            ekstype = eks.CoreDnsComputeType.FARGATE
+        if resfargtdns == True:
+            eksdnstype = eks.CoreDnsComputeType.FARGATE
         else:
-            ekstype = eks.CoreDnsComputeType.EC2
+            eksdnstype = eks.CoreDnsComputeType.EC2
         if resvers == "V1_14":
             eksvers = eks.KubernetesVersion.V1_14
         if resvers == "V1_15":
@@ -80,12 +82,12 @@ class EksStack(core.Stack):
             )
         if preflst == True:
             # get prefix list from file to allow traffic from the office
-            mymap = core.CfnMapping(
+            self.map = core.CfnMapping(
                 self,
                 f"{construct_id}Map",
                 mapping=zonemap["Mappings"]["RegionMap"]
             )
-            srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
             self.aseks.add_ingress_rule(
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()
@@ -112,73 +114,106 @@ class EksStack(core.Stack):
             rescap = resmap['Mappings']['Resources'][res]['desir']
             ressize = resmap['Mappings']['Resources'][res]['SIZE']
             resclass = resmap['Mappings']['Resources'][res]['CLASS']
-            # create EKS Cluster
-            self.eksclust = eks.Cluster(
-                self,
-                f"{construct_id}EKSCluster",
-                default_capacity=rescap,
-                default_capacity_instance=ec2.InstanceType.of(
-                    instance_class=ec2.InstanceClass(resclass),
-                    instance_size=ec2.InstanceSize(ressize),
-                ),
-                default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
-                core_dns_compute_type=ekstype,
-                endpoint_access=eksendpt,
-                cluster_name=resname,
-                vpc=self.vpc,
-                vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
-                version=eksvers,
-                security_group=self.aseks,
-            )
-        else:
-            self.eksclust = eks.Cluster(
-                self,
-                f"{construct_id}EKSCluster",
-                default_capacity=0,
-                core_dns_compute_type=ekstype,
-                endpoint_access=eksendpt,
-                cluster_name=resname,
-                vpc=self.vpc,
-                vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
-                version=eksvers,
-                security_group=self.aseks,
-            )
-            res = res2
-            resname = resmap['Mappings']['Resources'][res]['NAME']
-            restype = resmap['Mappings']['Resources'][res]['Type']
-            mykey = resmap['Mappings']['Resources'][res]['KEY']
-            resendp = resmap['Mappings']['Resources'][res]['INTERNET']
-            ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
-            rescap = resmap['Mappings']['Resources'][res]['desir']
-            resmin = resmap['Mappings']['Resources'][res]['min']
-            resmax = resmap['Mappings']['Resources'][res]['max']
-            ressize = resmap['Mappings']['Resources'][res]['SIZE']
-            resclass = resmap['Mappings']['Resources'][res]['CLASS']
-
-            if restype == 'ON_DEMAND':
-                captype = eks.CapacityType.ON_DEMAND
-            if restype == 'SPOT':
-                captype = eks.CapacityType.SPOT
-            self.eksnodeasg = eks.Nodegroup(
-                self,
-                f"{construct_id}EKSNodeGrp",
-                cluster=self.eksclust,
-                capacity_type=captype,
-                desired_size=rescap,
-                instance_types=[
-                    ec2.InstanceType.of(
+            if restype == 'EC2':
+                # create EKS Cluster
+                self.eksclust = eks.Cluster(
+                    self,
+                    f"{construct_id}EKSCluster",
+                    default_capacity=rescap,
+                    default_capacity_instance=ec2.InstanceType.of(
                         instance_class=ec2.InstanceClass(resclass),
                         instance_size=ec2.InstanceSize(ressize),
-                    )
-                ],
-                min_size=resmin,
-                max_size=resmax,
-                nodegroup_name=resname,
-                subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                remote_access=eks.NodegroupRemoteAccess(
-                    ssh_key_name=f"{mykey}{region}",
-                    source_security_groups=[self.allowsg]
+                    ),
+                    default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
+                    core_dns_compute_type=eksdnstype,
+                    endpoint_access=eksendpt,
+                    cluster_name=resname,
+                    vpc=self.vpc,
+                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                    version=eksvers,
+                    security_group=self.aseks,
                 )
-
-            )
-
+            if allowsg != '':
+                self.eksclust.connections.add_security_group(allowsg)
+            if preflst == True:
+                self.eksclust.connections.allow_default_port_from(ec2.Peer.prefix_list(srcprefix))
+            if allowall == True:
+                self.eksclust.connections.allow_default_port_from_any_ipv4()
+        else:
+            if restype == 'EC2':
+                self.eksclust = eks.Cluster(
+                    self,
+                    f"{construct_id}EKSCluster",
+                    default_capacity=0,
+                    core_dns_compute_type=eksdnstype,
+                    endpoint_access=eksendpt,
+                    cluster_name=resname,
+                    vpc=self.vpc,
+                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                    version=eksvers,
+                    security_group=self.aseks,
+                )
+                if 'NodeGrp' in resmap['Mappings']['Resources'][res]:
+                    res = resmap['Mappings']['Resources'][res]['NodeGrp']
+                    resname = resmap['Mappings']['Resources'][res]['NAME']
+                    restype = resmap['Mappings']['Resources'][res]['Type']
+                    mykey = resmap['Mappings']['Resources'][res]['KEY']
+                    ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+                    rescap = resmap['Mappings']['Resources'][res]['desir']
+                    resmin = resmap['Mappings']['Resources'][res]['min']
+                    resmax = resmap['Mappings']['Resources'][res]['max']
+                    ressize = resmap['Mappings']['Resources'][res]['SIZE']
+                    resclass = resmap['Mappings']['Resources'][res]['CLASS']
+                    respubip = resmap['Mappings']['Resources'][res]['PUBIP']
+                    if restype == 'ON_DEMAND':
+                        captype = eks.CapacityType.ON_DEMAND
+                    if restype == 'SPOT':
+                        captype = eks.CapacityType.SPOT
+                    if allowsg != '':
+                        self.allowsg = allowsg
+                    else:
+                        self.allowsg = self.aseks
+                    self.eksnodeasg = self.eksclust.add_auto_scaling_group_capacity(
+                        f"{construct_id}EKSNodeGrp",
+                        instance_type=ec2.InstanceType.of(
+                            instance_class=ec2.InstanceClass(resclass),
+                            instance_size=ec2.InstanceSize(ressize),
+                        ),
+                        bootstrap_enabled=True,
+                        bootstrap_options=None,
+                        machine_image_type=eks.MachineImageType.AMAZON_LINUX_2,
+                        allow_all_outbound=True,
+                        associate_public_ip_address=respubip,
+                        desired_capacity=rescap,
+                        key_name=f"{mykey}{region}",
+                        max_capacity=resmax,
+                        min_capacity=resmin,
+                        vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True)
+                    ).add_security_group(self.aseks)
+                    # self.eksnodeasg = eks.Nodegroup(
+                    #     self,
+                    #     f"{construct_id}EKSNodeGrp",
+                    #     cluster=self.eksclust,
+                    #     capacity_type=captype,
+                    #     desired_size=rescap,
+                    #     instance_types=[
+                    #         ec2.InstanceType.of(
+                    #             instance_class=ec2.InstanceClass(resclass),
+                    #             instance_size=ec2.InstanceSize(ressize),
+                    #         )
+                    #     ],
+                    #     min_size=resmin,
+                    #     max_size=resmax,
+                    #     nodegroup_name=resname,
+                    #     subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                    #     remote_access=eks.NodegroupRemoteAccess(
+                    #         ssh_key_name=f"{mykey}{region}",
+                    #         source_security_groups=[self.allowsg]
+                    #     )
+                    # )
+        self.eksoidc = iam.OpenIdConnectProvider(
+            self,
+            f"{construct_id}OIDC",
+            url=self.eksclust.cluster_open_id_connect_issuer_url,
+            client_ids=['sts.amazonaws.com']
+        )

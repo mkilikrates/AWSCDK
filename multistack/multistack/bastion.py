@@ -7,7 +7,7 @@ from aws_cdk import (
 )
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
-class bastion(core.Stack):
+class BastionStack(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
@@ -19,12 +19,12 @@ class bastion(core.Stack):
         with open('zonemap.cfg') as zonefile:
             zonemap = json.load(zonefile)
         # get prefix list from file to allow traffic from the office
-        mymap = core.CfnMapping(
+        self.map = core.CfnMapping(
             self,
             f"{construct_id}Map",
             mapping=zonemap["Mappings"]["RegionMap"]
         )
-        srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+        srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # create security group for bastion
         self.bastionsg = ec2.SecurityGroup(
             self,
