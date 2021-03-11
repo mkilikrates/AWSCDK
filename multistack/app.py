@@ -14,6 +14,7 @@ from multistack.ec2_eip import EIP as eip
 from multistack.decodevpn import S2SVPNS3 as vpns3
 from multistack.ds import myds
 from multistack.eks import EksStack as eks
+from multistack.eksapp import MyAppStack as eksapp
 from multistack.netfw import (
     internetfw as netfw,
     fwroutes as netfwrt
@@ -43,5 +44,6 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-EKStack = eks(app, "MYEKS", env=myenv, res = 'myeksprivec2', preflst = '', allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
+EKStack = eks(app, "MYEKS", env=myenv, res = 'myekspubec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
+EKSAppStack = eksapp(app, "myapp", env=myenv, res = 's3bucket', ekscluster = EKStack.eksclust ).add_dependency(EKStack)
 app.synth()

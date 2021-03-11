@@ -211,9 +211,9 @@ class EksStack(core.Stack):
                     #         source_security_groups=[self.allowsg]
                     #     )
                     # )
-        self.eksoidc = iam.OpenIdConnectProvider(
-            self,
-            f"{construct_id}OIDC",
-            url=self.eksclust.cluster_open_id_connect_issuer_url,
-            client_ids=['sts.amazonaws.com']
-        )
+        # self.eksoidc = iam.OpenIdConnectProvider(
+        #     self,
+        #     f"{construct_id}OIDC",
+        #     url=self.eksclust.cluster_open_id_connect_issuer_url,
+        #     client_ids=['sts.amazonaws.com']
+        # )

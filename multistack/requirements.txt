@@ -20,4 +20,7 @@ aws_cdk.aws_ram
 aws_cdk.aws_directoryservice
 aws_cdk.aws_secretsmanager
 aws_cdk.aws_eks
+constructs
+cdk8s
+cdk8s_plus
 -e .
