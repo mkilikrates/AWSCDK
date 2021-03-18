@@ -97,7 +97,7 @@ class mygw(core.Stack):
                     resname = resmap['Mappings']['Resources'][res]['NAME']
                     resallowext = resmap['Mappings']['Resources'][res]['EXTERN']
                     resprinc = resmap['Mappings']['Resources'][res]['Principals']
-                    arnlist = f"arn:{partition}:ec2:{region}:{account}:transit-gateway/{gw}"
+                    arnlist = f"arn:{core.Aws.PARTITION}:ec2:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:transit-gateway/{gw}"
                     self.ram = ram.CfnResourceShare(
                         self,
                         f"{construct_id}",

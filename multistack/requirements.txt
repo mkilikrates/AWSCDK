@@ -20,7 +20,10 @@ aws_cdk.aws_ram
 aws_cdk.aws_directoryservice
 aws_cdk.aws_secretsmanager
 aws_cdk.aws_eks
+PyYAML
 constructs
 cdk8s
 cdk8s_plus
+cdk8s_aws_alb_ingress_controller
+requests
 -e .

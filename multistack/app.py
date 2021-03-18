@@ -44,6 +44,6 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-EKStack = eks(app, "MYEKS", env=myenv, res = 'myekspubec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
-EKSAppStack = eksapp(app, "myapp", env=myenv, res = 's3bucket', ekscluster = EKStack.eksclust ).add_dependency(EKStack)
+EKStack = eks(app, "myeks", env=myenv, res = 'myekspriv', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
+EKSAppStack = eksapp(app, "myapp", env=myenv, res = 'eksalbfe', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ekscluster = EKStack.eksclust, vpc = VPCStack.vpc)
 app.synth()

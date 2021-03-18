@@ -1,11 +1,14 @@
 import os
 import json
+import requests
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_eks as eks,
     aws_iam as iam,
     core,
 )
+import multistack.ekselb as MyChart
+import cdk8s as cdk8s
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 resconf = "resourcesmap.cfg"
@@ -129,7 +132,7 @@ class EksStack(core.Stack):
                     endpoint_access=eksendpt,
                     cluster_name=resname,
                     vpc=self.vpc,
-                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
                     security_group=self.aseks,
                 )
@@ -149,7 +152,7 @@ class EksStack(core.Stack):
                     endpoint_access=eksendpt,
                     cluster_name=resname,
                     vpc=self.vpc,
-                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnets,
+                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
                     security_group=self.aseks,
                 )
@@ -188,32 +191,23 @@ class EksStack(core.Stack):
                         key_name=f"{mykey}{region}",
                         max_capacity=resmax,
                         min_capacity=resmin,
-                        vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True)
+                        vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=False)
                     ).add_security_group(self.aseks)
-                    # self.eksnodeasg = eks.Nodegroup(
-                    #     self,
-                    #     f"{construct_id}EKSNodeGrp",
-                    #     cluster=self.eksclust,
-                    #     capacity_type=captype,
-                    #     desired_size=rescap,
-                    #     instance_types=[
-                    #         ec2.InstanceType.of(
-                    #             instance_class=ec2.InstanceClass(resclass),
-                    #             instance_size=ec2.InstanceSize(ressize),
-                    #         )
-                    #     ],
-                    #     min_size=resmin,
-                    #     max_size=resmax,
-                    #     nodegroup_name=resname,
-                    #     subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                    #     remote_access=eks.NodegroupRemoteAccess(
-                    #         ssh_key_name=f"{mykey}{region}",
-                    #         source_security_groups=[self.allowsg]
-                    #     )
-                    # )
-        # self.eksoidc = iam.OpenIdConnectProvider(
-        #     self,
-        #     f"{construct_id}OIDC",
-        #     url=self.eksclust.cluster_open_id_connect_issuer_url,
-        #     client_ids=['sts.amazonaws.com']
-        # )
+        mypodprincipal = iam.OpenIdConnectPrincipal(self.eksclust.open_id_connect_provider)
+        self.eksclust.add_cdk8s_chart(
+            f"{construct_id}-alb-controller",
+            chart=MyChart.Albctrl(cdk8s.App(),f"{construct_id}-alb-controller", clustername = self.eksclust.cluster_name)
+        )
+        self.albsvcacc = self.eksclust.add_service_account(
+            "aws-load-balancer-controller",
+            name="aws-load-balancer-controller",
+            namespace=('default')
+        )
+        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
+        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.1.4/docs/examples/iam-policy.json'
+        mypol = requests.get(url)
+        mypolstat = json.dumps(mypol.json())
+        mynewpol = json.loads(mypolstat)
+        for statement in mynewpol['Statement']:
+            self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+
