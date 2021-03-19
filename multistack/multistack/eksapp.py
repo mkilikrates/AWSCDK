@@ -114,35 +114,36 @@ class MyAppStack(core.Stack):
                     }
                 }
             }
-            # output = yaml.dump(self.mydeploy)
-            # print(output)
+            output = yaml.dump(self.mydeploy)
+            print(output)
             # add annotations to service
             mysvcannot = {}
+            self.mysvc = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': { 
+                    'name': f"{construct_id}mysvc",
+                    'annotations': mysvcannot
+                },
+                'spec': {
+                    'type': "LoadBalancer",
+                    'ports': [
+                        {
+                            'port': reslbport,
+                            'targetPort': restgport
+                        }
+                    ],
+                    'selector': appLabel
+                }
+            }
+            output = yaml.dump(self.mysvc)
+            print(output)
+
             if ressubgrp == 'Private':
                 mysvcannot['service.beta.kubernetes.io/aws-load-balancer-internal'] = 'true'
             if reselb == 'clb':
                 mysvcannot['service.beta.kubernetes.io/aws-load-balancer-ssl-cert'] = self.cert.certificate_arn
                 mysvcannot['service.beta.kubernetes.io/aws-load-balancer-backend-protocol'] = 'http'
-                self.mysvc = {
-                    'apiVersion': 'v1',
-                    'kind': 'Service',
-                    'metadata': { 
-                        'name': f"{construct_id}mysvc",
-                        'annotations': mysvcannot
-                    },
-                    'spec': {
-                        'type': "LoadBalancer",
-                        'ports': [
-                            {
-                                'port': reslbport,
-                                'targetPort': restgport
-                            }
-                        ],
-                        'selector': appLabel
-                    }
-                }
-                # output = yaml.dump(self.mysvc)
-                # print(output)
             if reselb == 'alb':
                 mysvcannot['kubernetes.io/ingress.class'] = 'alb'
                 if elbface == True:
@@ -151,7 +152,7 @@ class MyAppStack(core.Stack):
                     mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internal'
                 mysublist = self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids
                 mysubstrlist = ', '.join(['"{}"'.format(value) for value in mysublist])
-                mysvcannot['alb.ingress.kubernetes.io/subnets'] = mysubstrlist
+                #mysvcannot['alb.ingress.kubernetes.io/subnets'] = mysubstrlist
                 # create security group for LB
                 self.lbsg = ec2.SecurityGroup(
                     self,
@@ -192,11 +193,11 @@ class MyAppStack(core.Stack):
                 else:
                     mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'ipv4'
                 mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
-                mysvcannot['alb.ingress.kubernetes.io/target-type'] = 'NodePort'
-                mysvcannot['alb.ingress.kubernetes.io/backend-protocol-version'] = 'HTTP'
+                mysvcannot['alb.ingress.kubernetes.io/target-type'] = 'ip'
+                mysvcannot['alb.ingress.kubernetes.io/backend-protocol-version'] = 'HTTP2'
                 mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301" } }'
                 mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
-                self.mysvc = {
+                self.myingress = {
                     'apiVersion': 'extensions/v1beta1',
                     'kind': 'Ingress',
                     'metadata': { 
@@ -222,6 +223,9 @@ class MyAppStack(core.Stack):
                         ]
                     }
                 }
+                output = yaml.dump(self.myingress)
+                print(output)
+                
                 # https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_eks/README.html
                 
             # deploy 
@@ -229,7 +233,7 @@ class MyAppStack(core.Stack):
                 self,
                 f"{construct_id}Manifest",
                 cluster=self.eksclust,
-                manifest=[self.mydeploy, self.mysvc]
+                manifest=[self.mydeploy, self.mysvc, self.myingress]
             )
             # show the ELB name
             # core.CfnOutput(

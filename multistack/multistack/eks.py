@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import yaml
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_eks as eks,
@@ -16,6 +17,14 @@ with open(resconf) as resfile:
     resmap = json.load(resfile)
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
+def _add_labels(part):
+    part["metadata"].setdefault("labels", {})
+    part["metadata"]["labels"]["cdk-addons"] = "true"
+    if part["kind"] in ["Deployment", "DaemonSet", "StatefulSet", "ClusterRole", "ServiceAccount", "Role", "Namespace", "Service", "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration", "Order", "Issuer", "ClusterIssuer", "CustomResourceDefinition", "CertificateRequest", "Challenge", "Certificate"]:
+        part["metadata"]["labels"]["cdk-restart-on-ca-change"] = "true"
+
+
+
 class EksStack(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -31,6 +40,10 @@ class EksStack(core.Stack):
         resfargtdns = resmap['Mappings']['Resources'][res]['FargateDNS']
         resendp = resmap['Mappings']['Resources'][res]['INTERNET']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+        if 'ROLEADM' in resmap['Mappings']['Resources'][res]:
+            resrole = resmap['Mappings']['Resources'][res]['ROLEADM']
+        else:
+            resrole = ''
         if resendp == True:
             eksendpt = eks.EndpointAccess.PUBLIC
         if resendp == False:
@@ -193,16 +206,46 @@ class EksStack(core.Stack):
                         min_capacity=resmin,
                         vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=False)
                     ).add_security_group(self.aseks)
-        mypodprincipal = iam.OpenIdConnectPrincipal(self.eksclust.open_id_connect_provider)
+        iam.OpenIdConnectPrincipal(self.eksclust.open_id_connect_provider)
+        if resrole != '':
+            myrole = iam.Role.from_role_arn(
+                self,
+                f"{construct_id}AddRole",
+                f"arn:{core.Aws.PARTITION}:iam:{core.Aws.ACCOUNT_ID}:role/{resrole}"
+            )
+            self.eksclust.aws_auth.add_masters_role(myrole)
+        # certificate manager
+        # from https://github.com/charmed-kubernetes/cdk-addons/blob/master/cdk-addons/apply
+        url = 'https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml'
+        myreq = requests.get(url).content
+        mycstdef = [part for part in yaml.safe_load_all(myreq) if part]
+        for part in mycstdef:
+            if part['kind'] == 'List':
+                # some files use kind:List rather than a set of YAML parts
+                for item in part['items']:
+                    _add_labels(item)
+            else:
+                _add_labels(part)
+        # # deploy 
+        self.eksclust.add_manifest(
+            "cert-manager",
+            mycstdef
+        )
+        # another way to test
+        # from https://pypi.org/project/aws-cdk.aws-eks/
+
+        # load balancer controller
         self.eksclust.add_cdk8s_chart(
-            f"{construct_id}-alb-controller",
-            chart=MyChart.Albctrl(cdk8s.App(),f"{construct_id}-alb-controller", clustername = self.eksclust.cluster_name)
+            "aws-load-balancer-controller",
+            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name)
         )
         self.albsvcacc = self.eksclust.add_service_account(
             "aws-load-balancer-controller",
             name="aws-load-balancer-controller",
             namespace=('default')
         )
+        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.2/docs/install/v2_1_2_full.yaml'
+        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json'
         url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
         # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.1.4/docs/examples/iam-policy.json'
         mypol = requests.get(url)
@@ -210,4 +253,24 @@ class EksStack(core.Stack):
         mynewpol = json.loads(mypolstat)
         for statement in mynewpol['Statement']:
             self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+        core.CfnOutput(
+            self,
+            f"{construct_id}-AdmRole",
+            value=self.eksclust.admin_role.role_name
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}-eksclusterSG",
+            value=self.eksclust.cluster_security_group_id
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}-kubectlSG",
+            value=self.eksclust.kubectl_security_group.security_group_id
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}-kubectlRole",
+            value=self.eksclust.kubectl_role.role_name
+        )
 

@@ -26,6 +26,17 @@ class Albctrl(cdk8s.Chart):
             create_service_account=False,
         )
         #AwsLoadBalancePolicy.add_policy(VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2, 'aws-load-balancer-controller')
+class certmgr(cdk8s.Chart):
+    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.clustername = clustername
+        AwsLoadBalancerController(
+            self,
+            f"{construct_id}-alb",
+            cluster_name=self.clustername,
+            create_service_account=False,
+        )
 
 class Albpol(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
