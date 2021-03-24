@@ -1,10 +1,14 @@
+import json
 import cdk8s_plus as kplus
 import constructs
 import cdk8s as cdk8s
+import yaml
+import path
+
 from cdk8s_aws_alb_ingress_controller import (
     AwsLoadBalancerController, 
     AwsLoadBalancePolicy, 
-    VersionsLists
+    VersionsLists,
 )
 from aws_cdk import (
     aws_ec2 as ec2,
@@ -12,8 +16,13 @@ from aws_cdk import (
     aws_iam as iam,
     core,
 )
+yamloutdir = './cdk.out/'
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
+resconf = "resourcesmap.cfg"
+with open(resconf) as resfile:
+    resmap = json.load(resfile)
+
 class Albctrl(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -47,4 +56,81 @@ class Albpol(cdk8s.Chart):
             version=VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2,
             role=self.svcaccount
         )
+
+class nginxs3(cdk8s.Chart):
+    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, res: str, svcaccname: str, svcannot: dict, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.clustername = clustername
+        res = res
+        resname = resmap['Mappings']['Resources'][res]['NAME']
+        restgport = resmap['Mappings']['Resources'][res]['TGPORT']
+        reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
+        desircap = resmap['Mappings']['Resources'][res]['desir']
+        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+        reselb = resmap['Mappings']['Resources'][res]['LBType']
+        elbface = resmap['Mappings']['Resources'][res]['INTERNET']
+        ress3 = resmap['Mappings']['Resources'][res]['S3']
+        ress3pfx = resmap['Mappings']['Resources'][res]['S3PRFX']
+        # defining some common variables
+        appvol = kplus.Volume.from_empty_dir('www')
+        # defining containeres
+        container = kplus.Container(
+            image='nginx',
+            volume_mounts=[
+                kplus.VolumeMount(
+                    path='/usr/share/nginx/html',
+                    volume=appvol,
+                    read_only=True
+                )
+            ],
+            port=restgport
+        )
+        initcontainer = kplus.Container(
+            image='amazon/aws-cli',
+            args=['s3', 'cp', '--recursive', f"s3://{ress3}/{ress3pfx}/", "/www/"],
+            volume_mounts=[
+                kplus.VolumeMount(
+                    path='/usr/share/nginx/html',
+                    volume=appvol,
+                    read_only=False
+                )
+            ]
+        )
+        
+        # defining a deployment
+        self.deployment = kplus.Deployment(
+            self,
+            f"{construct_id}-deployment",
+            replicas=desircap,
+            service_account=kplus.ServiceAccount.from_service_account_name(svcaccname),
+            containers=[container],
+            #initcontainers=[initcontainer]
+            # https://github.com/cdk8s-team/cdk8s/issues/545
+        )
+        #self.deployment.pod_metadata.add(key='initContainers', value=initcontainer)
+        
+        # defining a service
+        self.service = self.deployment.expose(
+            restgport,
+            service_type=kplus.ServiceType.NODE_PORT,
+        )
+        self.ingress = kplus.Ingress(
+            self,
+            f"{construct_id}-ingress",
+        )
+        for k,v in svcannot.items():
+            self.ingress._api_object.metadata.add_annotation(k,v)
+#            print("Key: {0}, Value: {1}".format(k,v))
+        self.ingress.add_host_rule(
+            host=f"{resname}.{appdomain}",
+            path='/*',
+            backend=kplus.IngressBackend.from_service(self.service)
+        )
+
+
+
+
+
 

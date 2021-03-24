@@ -35,6 +35,8 @@ class MyAppStack(core.Stack):
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         reselb = resmap['Mappings']['Resources'][res]['LBType']
         elbface = resmap['Mappings']['Resources'][res]['INTERNET']
+        ress3 = resmap['Mappings']['Resources'][res]['S3']
+        ress3pfx = resmap['Mappings']['Resources'][res]['S3PRFX']
 
         self.mysvcacc = self.eksclust.add_service_account(
             f"{construct_id}-{resname}-svcacc",
@@ -55,191 +57,211 @@ class MyAppStack(core.Stack):
             domain_name=f"{resname}.{appdomain}",
             validation=acm.CertificateValidation.from_dns(self.hz)
         )
-
         # check if want to want copy files to nginx test
-        if 'S3CP' in resmap['Mappings']['Resources'][res]:
-            res = resmap['Mappings']['Resources'][res]['S3CP']
-            self.bucketname = resmap['Mappings']['Resources'][res]['S3']
-            # create policy to pod
-            self.mysvcacc.add_to_principal_policy(
-                statement=iam.PolicyStatement(
-                    actions=[
-                        "s3:GetObject",
-                        "s3:ListBucket"
-                    ],
-                    resources=[
-                        f"arn:aws:s3:::{self.bucketname}",
-                        f"arn:aws:s3:::{self.bucketname}/images/*"
-                    ],
-                    effect=iam.Effect.ALLOW,
-                )
+        self.mysvcacc.add_to_principal_policy(
+            statement=iam.PolicyStatement(
+                actions=[
+                    "s3:GetObject",
+                    "s3:ListBucket"
+                ],
+                resources=[
+                    f"arn:aws:s3:::{ress3}",
+                    f"arn:aws:s3:::{ress3}/{ress3pfx}/*"
+                ],
+                effect=iam.Effect.ALLOW,
             )
-            # create a deployment using serviceaccount and initContainers to copy content to be served
-            appLabel = { 'app': f"{construct_id}-{resname}"}
-            self.mydeploy = {
-                'apiVersion': 'apps/v1',
-                'kind': 'Deployment',
-                'metadata': { 'name': f"{construct_id}-{resname}" },
-                'spec': {
-                    'replicas': desircap,
-                    'selector': { 'matchLabels': appLabel },
-                    'template': {
-                        'metadata': { 'labels': appLabel },
-                        'spec':{
-                            'serviceAccountName': self.mysvcacc.service_account_name,
-                            'containers': [
-                                {
-                                    'name': f"{construct_id}-{resname}",
-                                    'image': 'nginx',
-                                    'ports': [ { 'containerPort': restgport }],
-                                    'volumeMounts': [ { 'name': 'www', 'mountPath' : '/usr/share/nginx/html' } ]
-                                }
-                            ],
-                            'initContainers': [
-                                {
-                                    'name': f"{construct_id}s3cp",
-                                    'image': 'amazon/aws-cli',
-                                    'args' : [
-                                        's3',
-                                        'cp',
-                                        '--recursive',
-                                        f"s3://{self.bucketname}/images/",
-                                        "/www/"
-                                    ],
-                                    'volumeMounts': [ { 'name': 'www', 'mountPath' : '/www' } ]
-                                }
-                            ],
-                            'volumes': [ { 'name': 'www', 'emptyDir': {} } ]
-                        }
-                    }
-                }
-            }
-            output = yaml.dump(self.mydeploy)
-            print(output)
-            # add annotations to service
-            mysvcannot = {}
-            self.mysvc = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': { 
-                    'name': f"{construct_id}mysvc",
-                    'annotations': mysvcannot
-                },
-                'spec': {
-                    'type': "LoadBalancer",
-                    'ports': [
-                        {
-                            'port': reslbport,
-                            'targetPort': restgport
-                        }
-                    ],
-                    'selector': appLabel
-                }
-            }
-            output = yaml.dump(self.mysvc)
-            print(output)
-
-            if ressubgrp == 'Private':
-                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-internal'] = 'true'
-            if reselb == 'clb':
-                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-ssl-cert'] = self.cert.certificate_arn
-                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-backend-protocol'] = 'http'
-            if reselb == 'alb':
-                mysvcannot['kubernetes.io/ingress.class'] = 'alb'
-                if elbface == True:
-                    mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internet-facing'
-                if elbface == False:
-                    mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internal'
-                mysublist = self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids
-                mysubstrlist = ', '.join(['"{}"'.format(value) for value in mysublist])
-                #mysvcannot['alb.ingress.kubernetes.io/subnets'] = mysubstrlist
-                # create security group for LB
-                self.lbsg = ec2.SecurityGroup(
-                    self,
-                    f"{construct_id}MyLBsg",
-                    allow_all_outbound=True,
-                    vpc=self.vpc
+        )
+        # create security group for LB
+        self.lbsg = ec2.SecurityGroup(
+            self,
+            f"{construct_id}MyLBsg",
+            allow_all_outbound=True,
+            vpc=self.vpc
+        )
+        if allowall == True:
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.any_ipv4,
+                ec2.Port.all_traffic()
+            )
+            if self.vpc.stack == 'Ipv6':
+                self.lbsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
                 )
-                if allowall == True:
-                    self.lbsg.add_ingress_rule(
-                        ec2.Peer.any_ipv4,
-                        ec2.Port.all_traffic()
-                    )
-                    if self.vpc.stack == 'Ipv6':
-                        self.lbsg.add_ingress_rule(
-                            ec2.Peer.any_ipv6,
-                            ec2.Port.all_traffic()
-                        )
-                if preflst == True:
-                    # get prefix list from file to allow traffic from the office
-                    srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
-                    self.lbsg.add_ingress_rule(
-                        ec2.Peer.prefix_list(srcprefix),
-                        ec2.Port.all_traffic()
-                    )
-                if type(allowall) == int or type(allowall) == float:
-                    self.lbsg.add_ingress_rule(
-                        ec2.Peer.any_ipv4(),
-                        ec2.Port.tcp(allowall)
-                    )
-                    if self.vpc.stack == 'Ipv6':
-                        self.lbsg.add_ingress_rule(
-                            ec2.Peer.any_ipv6(),
-                            ec2.Port.tcp(allowall)
-                        )
-                mysvcannot['alb.ingress.kubernetes.io/security-groups'] = self.lbsg.security_group_id
-                if self.vpc.stack == 'Ipv6':
-                    mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'dualstack'
-                else:
-                    mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'ipv4'
-                mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
-                mysvcannot['alb.ingress.kubernetes.io/target-type'] = 'ip'
-                mysvcannot['alb.ingress.kubernetes.io/backend-protocol-version'] = 'HTTP2'
-                mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301" } }'
-                mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
-                self.myingress = {
-                    'apiVersion': 'extensions/v1beta1',
-                    'kind': 'Ingress',
-                    'metadata': { 
-                        'name': f"{construct_id}mysvc",
-                        'labels': appLabel,
-                        'annotations': mysvcannot
-                    },
-                    'spec': {
-                        'rules': [
-                            {
-                                'http': {
-                                    'paths' : [
-                                        {
-                                            'path' : '/*',
-                                            'backend' : {
-                                                'serviceName' : f"{construct_id}mysvc",
-                                                'servicePort' : restgport
-                                            },
-                                        }
-                                    ]
-                                }
-                            }
-                        ]
-                    }
-                }
-                output = yaml.dump(self.myingress)
-                print(output)
+        if preflst == True:
+            # get prefix list from file to allow traffic from the office
+            srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.prefix_list(srcprefix),
+                ec2.Port.all_traffic()
+            )
+        if type(allowall) == int or type(allowall) == float:
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(allowall)
+            )
+            if self.vpc.stack == 'Ipv6':
+                self.lbsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
+        mysvcannot = {}
+        #mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
+        if reselb == 'alb':
+            mysvcannot['kubernetes.io/ingress.class'] = 'alb'
+            mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
+            mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301" } }'
+            #mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
+            if elbface == True:
+                mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internet-facing'
+            if elbface == False:
+                mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internal'
+        # apply chart template of app
+        self.eksclust.add_cdk8s_chart(
+            f"{construct_id}-{resname}",
+            chart=MyChart.nginxs3(
+                cdk8s.App(),
+                f"{construct_id}-{resname}",
+                clustername = self.eksclust.cluster_name,
+                svcaccname = f"{construct_id}-{resname}-svcacc",
+                res = res,
+                svcannot = mysvcannot
+            )
+        )
+        
+            # create a deployment using serviceaccount and initContainers to copy content to be served
+            # appLabel = { 'app': f"{construct_id}-{resname}"}
+            # self.mydeploy = {
+            #     'apiVersion': 'apps/v1',
+            #     'kind': 'Deployment',
+            #     'metadata': { 'name': f"{construct_id}-{resname}" },
+            #     'spec': {
+            #         'replicas': desircap,
+            #         'selector': { 'matchLabels': appLabel },
+            #         'template': {
+            #             'metadata': { 'labels': appLabel },
+            #             'spec':{
+            #                 'serviceAccountName': self.mysvcacc.service_account_name,
+            #                 'containers': [
+            #                     {
+            #                         'name': f"{construct_id}-{resname}",
+            #                         'image': 'nginx',
+            #                         'ports': [ { 'containerPort': restgport }],
+            #                         'volumeMounts': [ { 'name': 'www', 'mountPath' : '/usr/share/nginx/html' } ]
+            #                     }
+            #                 ],
+            #                 'initContainers': [
+            #                     {
+            #                         'name': f"{construct_id}s3cp",
+            #                         'image': 'amazon/aws-cli',
+            #                         'args' : [
+            #                             's3',
+            #                             'cp',
+            #                             '--recursive',
+            #                             f"s3://{self.bucketname}/images/",
+            #                             "/www/"
+            #                         ],
+            #                         'volumeMounts': [ { 'name': 'www', 'mountPath' : '/www' } ]
+            #                     }
+            #                 ],
+            #                 'volumes': [ { 'name': 'www', 'emptyDir': {} } ]
+            #             }
+            #         }
+            #     }
+            # }
+            # output = yaml.dump(self.mydeploy)
+            # print(output)
+            # # add annotations to service
+            # mysvcannot = {}
+            # self.mysvc = {
+            #     'apiVersion': 'v1',
+            #     'kind': 'Service',
+            #     'metadata': { 
+            #         'name': f"{construct_id}mysvc",
+            #         'annotations': mysvcannot
+            #     },
+            #     'spec': {
+            #         'type': "LoadBalancer",
+            #         'ports': [
+            #             {
+            #                 'port': reslbport,
+            #                 'targetPort': restgport
+            #             }
+            #         ],
+            #         'selector': appLabel
+            #     }
+            # }
+            # output = yaml.dump(self.mysvc)
+            # print(output)
+
+            # if ressubgrp == 'Private':
+            #     mysvcannot['service.beta.kubernetes.io/aws-load-balancer-internal'] = 'true'
+            # if reselb == 'clb':
+            #     mysvcannot['service.beta.kubernetes.io/aws-load-balancer-ssl-cert'] = self.cert.certificate_arn
+            #     mysvcannot['service.beta.kubernetes.io/aws-load-balancer-backend-protocol'] = 'http'
+            # if reselb == 'alb':
+            #     mysvcannot['kubernetes.io/ingress.class'] = 'alb'
+            #     if elbface == True:
+            #         mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internet-facing'
+            #     if elbface == False:
+            #         mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internal'
+            #     mysublist = self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids
+            #     mysubstrlist = ', '.join(['"{}"'.format(value) for value in mysublist])
+            #     #mysvcannot['alb.ingress.kubernetes.io/subnets'] = mysubstrlist
+                # mysvcannot['alb.ingress.kubernetes.io/security-groups'] = self.lbsg.security_group_id
+                # if self.vpc.stack == 'Ipv6':
+                #     mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'dualstack'
+                # else:
+                #     mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'ipv4'
+                # mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
+                # mysvcannot['alb.ingress.kubernetes.io/target-type'] = 'ip'
+                # mysvcannot['alb.ingress.kubernetes.io/backend-protocol-version'] = 'HTTP2'
+                # mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301" } }'
+                # mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
+                # self.myingress = {
+                #     'apiVersion': 'extensions/v1beta1',
+                #     'kind': 'Ingress',
+                #     'metadata': { 
+                #         'name': f"{construct_id}mysvc",
+                #         'labels': appLabel,
+                #         'annotations': mysvcannot
+                #     },
+                #     'spec': {
+                #         'rules': [
+                #             {
+                #                 'http': {
+                #                     'paths' : [
+                #                         {
+                #                             'path' : '/*',
+                #                             'backend' : {
+                #                                 'serviceName' : f"{construct_id}mysvc",
+                #                                 'servicePort' : restgport
+                #                             },
+                #                         }
+                #                     ]
+                #                 }
+                #             }
+                #         ]
+                #     }
+                # }
+                # output = yaml.dump(self.myingress)
+                # print(output)
                 
                 # https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_eks/README.html
                 
             # deploy 
-            self.manif = eks.KubernetesManifest(
-                self,
-                f"{construct_id}Manifest",
-                cluster=self.eksclust,
-                manifest=[self.mydeploy, self.mysvc, self.myingress]
-            )
+            # self.manif = eks.KubernetesManifest(
+            #     self,
+            #     f"{construct_id}Manifest",
+            #     cluster=self.eksclust,
+            #     manifest=[self.mydeploy, self.mysvc, self.myingress]
+            # )
             # show the ELB name
             # core.CfnOutput(
             #     self,
             #     f"{construct_id}:ALB DNS",
             #     value=self.eksclust.get_service_load_balancer_address(f"{construct_id}mysvc")
             # )
+
 
 

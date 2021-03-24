@@ -44,6 +44,6 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-EKStack = eks(app, "myeks", env=myenv, res = 'myekspriv', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
-#EKSAppStack = eksapp(app, "myapp", env=myenv, res = 'eksalbbe', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ekscluster = EKStack.eksclust, vpc = VPCStack.vpc)
+EKStack = eks(app, "myeks", env=myenv, res = 'myeksprivec2', preflst = False, allowsg = BationStack.bastionsg, allowall = '', vpc = VPCStack.vpc)
+EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbbe', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ekscluster = EKStack.eksclust, vpc = VPCStack.vpc).add_dependency(EKStack)
 app.synth()

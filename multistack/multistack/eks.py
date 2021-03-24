@@ -17,14 +17,6 @@ with open(resconf) as resfile:
     resmap = json.load(resfile)
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
-def _add_labels(part):
-    part["metadata"].setdefault("labels", {})
-    part["metadata"]["labels"]["cdk-addons"] = "true"
-    if part["kind"] in ["Deployment", "DaemonSet", "StatefulSet", "ClusterRole", "ServiceAccount", "Role", "Namespace", "Service", "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration", "Order", "Issuer", "ClusterIssuer", "CustomResourceDefinition", "CertificateRequest", "Challenge", "Certificate"]:
-        part["metadata"]["labels"]["cdk-restart-on-ca-change"] = "true"
-
-
-
 class EksStack(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -126,6 +118,16 @@ class EksStack(core.Stack):
                 ec2.Peer.any_ipv6(),
                 ec2.Port.tcp(allowall)
             )
+        # Iam Role
+        self.eksrole = iam.Role(
+            self,
+            f"{construct_id}-role",
+            assumed_by=iam.ServicePrincipal('eks.amazonaws.com'),
+            description="Role for EKS Cluster",
+        )
+        self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSServicePolicy'))
+        self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSClusterPolicy'))
+        
         if 'desir' in resmap['Mappings']['Resources'][res]:
             rescap = resmap['Mappings']['Resources'][res]['desir']
             ressize = resmap['Mappings']['Resources'][res]['SIZE']
@@ -134,7 +136,7 @@ class EksStack(core.Stack):
                 # create EKS Cluster
                 self.eksclust = eks.Cluster(
                     self,
-                    f"{construct_id}EKSCluster",
+                    f"{construct_id}-ekscluster",
                     default_capacity=rescap,
                     default_capacity_instance=ec2.InstanceType.of(
                         instance_class=ec2.InstanceClass(resclass),
@@ -143,31 +145,29 @@ class EksStack(core.Stack):
                     default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
                     core_dns_compute_type=eksdnstype,
                     endpoint_access=eksendpt,
-                    cluster_name=resname,
+                    #cluster_name=resname,
                     vpc=self.vpc,
-                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
+                    #vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
-                    security_group=self.aseks,
+                    #security_group=self.aseks,
+                    role=self.eksrole,
+                    output_masters_role_arn=True
                 )
-            if allowsg != '':
-                self.eksclust.connections.add_security_group(allowsg)
-            if preflst == True:
-                self.eksclust.connections.allow_default_port_from(ec2.Peer.prefix_list(srcprefix))
-            if allowall == True:
-                self.eksclust.connections.allow_default_port_from_any_ipv4()
         else:
             if restype == 'EC2':
                 self.eksclust = eks.Cluster(
                     self,
-                    f"{construct_id}EKSCluster",
+                    f"{construct_id}-ekscluster",
                     default_capacity=0,
                     core_dns_compute_type=eksdnstype,
                     endpoint_access=eksendpt,
-                    cluster_name=resname,
+                    #cluster_name=resname,
                     vpc=self.vpc,
-                    vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
+                    #vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
-                    security_group=self.aseks,
+                    #security_group=self.aseks,
+                    role=self.eksrole,
+                    output_masters_role_arn=True
                 )
                 if 'NodeGrp' in resmap['Mappings']['Resources'][res]:
                     res = resmap['Mappings']['Resources'][res]['NodeGrp']
@@ -204,9 +204,21 @@ class EksStack(core.Stack):
                         key_name=f"{mykey}{region}",
                         max_capacity=resmax,
                         min_capacity=resmin,
-                        vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=False)
+                        vpc_subnets=ec2.SubnetSelection(
+                            subnet_group_name=ressubgrp,one_per_az=False
+                        )
                     ).add_security_group(self.aseks)
+        # add rules to cluster control pane security group
+        if allowsg != '':
+            #self.eksclust.connections.add_security_group(allowsg)
+            self.eksclust.connections.allow_default_port_from(allowsg)
+        if preflst == True:
+            self.eksclust.connections.allow_default_port_from(ec2.Peer.prefix_list(srcprefix))
+        if allowall == True:
+            self.eksclust.connections.allow_default_port_from_any_ipv4()
+        # create openid provider to be used in rules
         iam.OpenIdConnectPrincipal(self.eksclust.open_id_connect_provider)
+        # add custom role to master role of cluster
         if resrole != '':
             myrole = iam.Role.from_role_arn(
                 self,
@@ -214,50 +226,23 @@ class EksStack(core.Stack):
                 f"arn:{core.Aws.PARTITION}:iam:{core.Aws.ACCOUNT_ID}:role/{resrole}"
             )
             self.eksclust.aws_auth.add_masters_role(myrole)
-        # certificate manager
-        # from https://github.com/charmed-kubernetes/cdk-addons/blob/master/cdk-addons/apply
-        url = 'https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml'
-        myreq = requests.get(url).content
-        mycstdef = [part for part in yaml.safe_load_all(myreq) if part]
-        for part in mycstdef:
-            if part['kind'] == 'List':
-                # some files use kind:List rather than a set of YAML parts
-                for item in part['items']:
-                    _add_labels(item)
-            else:
-                _add_labels(part)
-        # # deploy 
-        self.eksclust.add_manifest(
-            "cert-manager",
-            mycstdef
-        )
-        # another way to test
-        # from https://pypi.org/project/aws-cdk.aws-eks/
-
-        # load balancer controller
-        self.eksclust.add_cdk8s_chart(
-            "aws-load-balancer-controller",
-            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name)
-        )
+        # service account for load balancer
         self.albsvcacc = self.eksclust.add_service_account(
             "aws-load-balancer-controller",
             name="aws-load-balancer-controller",
             namespace=('default')
         )
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.2/docs/install/v2_1_2_full.yaml'
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json'
         url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.1.4/docs/examples/iam-policy.json'
         mypol = requests.get(url)
         mypolstat = json.dumps(mypol.json())
         mynewpol = json.loads(mypolstat)
         for statement in mynewpol['Statement']:
             self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        core.CfnOutput(
-            self,
-            f"{construct_id}-AdmRole",
-            value=self.eksclust.admin_role.role_name
-        )
+        # load balancer controller
+        self.eksclust.add_cdk8s_chart(
+            "aws-load-balancer-controller",
+            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name)
+        ).node.add_dependency(self.albsvcacc)
         core.CfnOutput(
             self,
             f"{construct_id}-eksclusterSG",
