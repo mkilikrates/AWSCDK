@@ -20,10 +20,11 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class alb(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.ipstack = ipstack
         allowsg = allowsg
         tgrt = tgrt
         # get config for resource
@@ -52,7 +53,7 @@ class alb(core.Stack):
             validation=acm.CertificateValidation.from_dns(self.hz)
         )
         if elbface == True:
-            if self.vpc.stack == 'Ipv6':
+            if self.ipstack == 'Ipv6':
                 lbstack = elb.IpAddressType.DUAL_STACK
             else:
                 lbstack = elb.IpAddressType.IPV4
@@ -94,6 +95,22 @@ class alb(core.Stack):
                 allow_all_outbound=True,
                 vpc=self.vpc
             )
+            # add egress rule
+            ec2.CfnSecurityGroupEgress(
+                self,
+                f"{construct_id}EgressAllIpv4",
+                ip_protocol="-1",
+                cidr_ip="0.0.0.0/0",
+                group_id=self.lbsg.security_group_id
+            )
+            if self.ipstack == 'Ipv6':
+                ec2.CfnSecurityGroupEgress(
+                    self,
+                    f"{construct_id}EgressAllIpv6",
+                    ip_protocol="-1",
+                    cidr_ipv6="::/0",
+                    group_id=self.lbsg.security_group_id
+                )
             #create alb
             self.elb = elb.ApplicationLoadBalancer(
                 self,
@@ -129,7 +146,7 @@ class alb(core.Stack):
                 other=ec2.Peer.any_ipv4(),
                 description="Allow from anyone on LB port"
                 )
-                if self.vpc.stack == 'Ipv6':
+                if self.ipstack == 'Ipv6':
                     self.elblistnrs.connections.allow_default_port_from(
                         other=ec2.Peer.any_ipv6(),
                         description="Allow from anyone on LB port"

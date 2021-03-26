@@ -16,12 +16,19 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class main(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.ipstack = ipstack
         if allowsg != '':
             self.allowsg = allowsg
+        # get prefix list from file to allow traffic from the office
+        self.map = core.CfnMapping(
+            self,
+            f"{construct_id}Map",
+            mapping=zonemap["Mappings"]["RegionMap"]
+        )
         # get config for resource
         res = res
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
@@ -43,20 +50,19 @@ class main(core.Stack):
             vpc=self.vpc
         )
         # add egress rule
-        if self.vpc.stack == 'Ipv6':
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}:ASGEgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.asgsg.security_group_id
+        )
+        if self.ipstack == 'Ipv6':
             ec2.CfnSecurityGroupEgress(
                 self,
                 f"{construct_id}:ASGEgressAllIpv6",
                 ip_protocol="-1",
                 cidr_ipv6="::/0",
-                group_id=self.asgsg.security_group_id
-            )
-        else:
-            ec2.CfnSecurityGroupEgress(
-                self,
-                f"{construct_id}:ASGEgressAllIpv4",
-                ip_protocol="-1",
-                cidr_ip="0.0.0.0/0",
                 group_id=self.asgsg.security_group_id
             )
         # add ingress rule
@@ -66,13 +72,7 @@ class main(core.Stack):
                 ec2.Port.all_traffic()
             )
         if preflst == True:
-            # get prefix list from file to allow traffic from the office
-            mymap = core.CfnMapping(
-                self,
-                f"{construct_id}Map",
-                mapping=zonemap["Mappings"]["RegionMap"]
-            )
-            srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
             self.asgsg.add_ingress_rule(
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()
@@ -82,19 +82,21 @@ class main(core.Stack):
                 ec2.Peer.any_ipv4,
                 ec2.Port.all_traffic()
             )
-            self.asgsg.add_ingress_rule(
-                ec2.Peer.any_ipv6,
-                ec2.Port.all_traffic()
-            )
+            if self.ipstack == 'Ipv6':
+                self.asgsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
+                )
         if type(allowall) == int or type(allowall) == float:
             self.asgsg.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(allowall)
             )
-            self.asgsg.add_ingress_rule(
-                ec2.Peer.any_ipv6(),
-                ec2.Port.tcp(allowall)
-            )
+            if self.ipstack == 'Ipv6':
+                self.asgsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
         # create instance profile
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)

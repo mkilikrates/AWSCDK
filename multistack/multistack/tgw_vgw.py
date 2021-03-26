@@ -13,7 +13,7 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class mygw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, ipstack, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -198,6 +198,7 @@ class mygw(core.Stack):
                     destination_cidr_block='192.168.0.0/16',
                     transit_gateway_id=gw
                 ).add_depends_on(self.gwattch)
+            # create a list of vpcs ipv6 cidr to add routes
             # if self.vpc.stack == 'Ipv6':
         if gwtype == 'vgw':
             self.gw = gwid

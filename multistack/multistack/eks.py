@@ -18,10 +18,11 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EksStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.ipstack = ipstack
         if allowsg != '':
             self.allowsg = allowsg
         # get config for resource
@@ -66,20 +67,19 @@ class EksStack(core.Stack):
             vpc=self.vpc
         )
         # add egress rule
-        if self.vpc.stack == 'Ipv6':
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}ASGEgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.aseks.security_group_id
+        )
+        if self.ipstack == 'Ipv6':
             ec2.CfnSecurityGroupEgress(
                 self,
                 f"{construct_id}ASGEgressAllIpv6",
                 ip_protocol="-1",
                 cidr_ipv6="::/0",
-                group_id=self.aseks.security_group_id
-            )
-        else:
-            ec2.CfnSecurityGroupEgress(
-                self,
-                f"{construct_id}ASGEgressAllIpv4",
-                ip_protocol="-1",
-                cidr_ip="0.0.0.0/0",
                 group_id=self.aseks.security_group_id
             )
         # add ingress rule
@@ -105,19 +105,21 @@ class EksStack(core.Stack):
                 ec2.Peer.any_ipv4,
                 ec2.Port.all_traffic()
             )
-            self.aseks.add_ingress_rule(
-                ec2.Peer.any_ipv6,
-                ec2.Port.all_traffic()
-            )
+            if self.ipstack == 'Ipv6':
+                self.aseks.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
+                )
         if type(allowall) == int or type(allowall) == float:
             self.aseks.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(allowall)
             )
-            self.aseks.add_ingress_rule(
-                ec2.Peer.any_ipv6(),
-                ec2.Port.tcp(allowall)
-            )
+            if self.ipstack == 'Ipv6':
+                self.aseks.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
         # Iam Role
         self.eksrole = iam.Role(
             self,
@@ -238,6 +240,19 @@ class EksStack(core.Stack):
         mynewpol = json.loads(mypolstat)
         for statement in mynewpol['Statement']:
             self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+        # # certificate manager
+        # url = 'https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml'
+        # myurl = requests.get(url)
+        # myurlparsed = yaml.parse(myurl.content)
+        # manifest = yaml.dump_all(myurlparsed)
+        # eks.KubernetesManifest(
+        #     self,
+        #     'cert-manager',
+        #     cluster=self.eksclust,
+        #     manifest=manifest,
+        #     overwrite=True,
+        #     skip_validation=True
+        # )
         # load balancer controller
         self.eksclust.add_cdk8s_chart(
             "aws-load-balancer-controller",

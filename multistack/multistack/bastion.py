@@ -8,10 +8,11 @@ from aws_cdk import (
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 class BastionStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.ipstack = ipstack
         res = res
         resconf = "resourcesmap.cfg"
         with open(resconf) as resfile:
@@ -24,7 +25,6 @@ class BastionStack(core.Stack):
             f"{construct_id}Map",
             mapping=zonemap["Mappings"]["RegionMap"]
         )
-        srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # create security group for bastion
         self.bastionsg = ec2.SecurityGroup(
             self,
@@ -40,13 +40,22 @@ class BastionStack(core.Stack):
             cidr_ip="0.0.0.0/0",
             group_id=self.bastionsg.security_group_id
         )
-         # add ingress rules
+        if self.ipstack == 'Ipv6':
+            ec2.CfnSecurityGroupEgress(
+                self,
+                f"{construct_id}EgressAllIpv6",
+                ip_protocol="-1",
+                cidr_ipv6="::/0",
+                group_id=self.bastionsg.security_group_id
+            )
+        # add ingress rule
         if allowsg != '':
             self.bastionsg.add_ingress_rule(
-                allowsg,
+                self.allowsg,
                 ec2.Port.all_traffic()
             )
         if preflst == True:
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
             self.bastionsg.add_ingress_rule(
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()
@@ -56,32 +65,20 @@ class BastionStack(core.Stack):
                 ec2.Peer.any_ipv4,
                 ec2.Port.all_traffic()
             )
+            if self.ipstack == 'Ipv6':
+                self.bastionsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
+                )
         if type(allowall) == int or type(allowall) == float:
             self.bastionsg.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(allowall)
             )
-        self.bastionsg.add_ingress_rule(
-            self.bastionsg,
-            ec2.Port.all_traffic()
-        )
-        if self.vpc.stack == 'Ipv6':
-            ec2.CfnSecurityGroupEgress(
-                self,
-                f"{construct_id}EgressAllIpv6",
-                ip_protocol="-1",
-                cidr_ipv6="::/0",
-                group_id=self.bastionsg.security_group_id
-            )
-            if allowall == True:
-                self.bastionsg.add_ingress_rule(
-                    ec2.Peer.any_ipv6,
-                    ec2.Port.all_traffic()
-                )
-            if type(allowall) == int or type(allowall) == float:
+            if self.ipstack == 'Ipv6':
                 self.bastionsg.add_ingress_rule(
                     ec2.Peer.any_ipv6(),
-                    ec2.Port.all_traffic()
+                    ec2.Port.tcp(allowall)
                 )
 
         # get data for bastion resource
@@ -139,5 +136,5 @@ class BastionStack(core.Stack):
             value=self.bastion.__getattribute__("instance_public_ip"),
             export_name=f"{construct_id}:ipv4"
         )
-        if self.vpc.stack == 'Ipv6':
+        if self.ipstack == 'Ipv6':
             self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)

@@ -14,12 +14,13 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class VPCEStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, vpcstack = core.CfnStack.__name__, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         res = res
         # get imported objects
         self.vpc = vpc
         self.vpcstack = vpcstack
+        self.ipstack = ipstack
         # get data for bastion resource
         counter = 0
         for endpt in resmap['Mappings']['Resources'][res]['EndpointList']:
@@ -83,7 +84,7 @@ class VPCEStack(core.Stack):
                         cidr_ip=self.vpc.vpc_cidr_block,
                         group_id=self.vpcesg.security_group_id
                     )
-                    if self.vpc.stack == 'Ipv6':
+                    if self.ipstack == 'Ipv6':
                         cidrv6 = core.Fn.import_value(
                             f"{self.vpcstack}:vpccidrv6"
                         )
@@ -116,7 +117,7 @@ class VPCEStack(core.Stack):
                             ec2.Peer.any_ipv4,
                             ec2.Port.all_traffic()
                         )
-                        if self.vpc.stack == 'Ipv6':
+                        if self.ipstack == 'Ipv6':
                             self.vpcesg.add_ingress_rule(
                                 ec2.Peer.any_ipv6,
                                 ec2.Port.all_traffic()
@@ -126,7 +127,7 @@ class VPCEStack(core.Stack):
                             ec2.Peer.any_ipv4(),
                             ec2.Port.tcp(allowall)
                         )
-                        if self.vpc.stack == 'Ipv6':
+                        if self.ipstack == 'Ipv6':
                             self.vpcesg.add_ingress_rule(
                                 ec2.Peer.any_ipv6(),
                                 ec2.Port.tcp(allowall)
@@ -139,7 +140,7 @@ class VPCEStack(core.Stack):
                         cidr_ip="0.0.0.0/0",
                         group_id=self.vpcesg.security_group_id
                     )
-                    if self.vpc.stack == 'Ipv6':
+                    if self.ipstack == 'Ipv6':
                         # egress rule
                         ec2.CfnSecurityGroupEgress(
                             self,

@@ -7,13 +7,13 @@ from aws_cdk import (
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class VPC(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, stack, cidrid, natgw, maxaz, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, ipstack, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.cidrid = int(cidrid)
         self.natgw = int(natgw)
         self.maxaz = int(maxaz)
-        self.vpcstack = stack
+        self.ipstack = ipstack
         res = res
         # get prefix list from file to allow traffic from the office
         res = res
@@ -80,8 +80,7 @@ class VPC(core.Stack):
             value=self.vpc.vpc_default_security_group,
             export_name=f"{construct_id}:vpcdefaultsg"
         )
-
-        if self.vpcstack != 'Ipv4':
+        if self.ipstack != 'Ipv4':
             # ipv6 on this vpc
             self.ipv6_block = ec2.CfnVPCCidrBlock(self, "Ipv6",
                 vpc_id=self.vpc.vpc_id,
