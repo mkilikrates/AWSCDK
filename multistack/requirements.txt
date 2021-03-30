@@ -26,5 +26,5 @@ cdk8s
 cdk8s_plus
 cdk8s_aws_alb_ingress_controller
 requests
-aws_cdk.cloud_assembly_schema
+cdk8s_external_dns
 -e .

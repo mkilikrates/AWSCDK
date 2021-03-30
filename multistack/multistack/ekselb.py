@@ -10,6 +10,11 @@ from cdk8s_aws_alb_ingress_controller import (
     AwsLoadBalancePolicy, 
     VersionsLists,
 )
+from cdk8s_external_dns import (
+    AwsExternalDns, 
+    AwsZoneTypeOptions, 
+    AwsExternalDnsPolicyHelper
+)
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_eks as eks,
@@ -34,20 +39,23 @@ class Albctrl(cdk8s.Chart):
             create_service_account=False,
         )
         #AwsLoadBalancePolicy.add_policy(VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2, 'aws-load-balancer-controller')
-class certmgr(cdk8s.Chart):
-    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, **kwargs) -> None:
+class extdns(cdk8s.Chart):
+    def __init__(self, scope: constructs.Construct, construct_id: str, domain: str, domaintype: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
-        self.clustername = clustername
-        CertManager(
-            
-        )
-        AwsLoadBalancerController(
+        self.domain = domain
+        self.svcaccount = svcaccount
+        if domaintype == "private":
+            self.domaintype = AwsZoneTypeOptions.PRIVATE
+        if domaintype == "public":
+            self.domaintype = AwsZoneTypeOptions.PUBLIC
+        AwsExternalDns(
             self,
-            f"{construct_id}-alb",
-            cluster_name=self.clustername,
-            create_service_account=False,
+            f"external-dns-{self.domain}-{self.domaintype}",
+            domain_filter=self.domain,
+            aws_zone_type=self.domaintype
         )
+        AwsExternalDnsPolicyHelper.add_policy(self.svcaccount)
 
 class Albpol(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
@@ -76,9 +84,11 @@ class nginxs3(cdk8s.Chart):
         ress3 = resmap['Mappings']['Resources'][res]['S3']
         ress3pfx = resmap['Mappings']['Resources'][res]['S3PRFX']
         # defining some common variables
-        appvol = kplus.Volume.from_empty_dir('www')
+        www = kplus.IConfigMap = kplus.ConfigMap.from_config_map_name('www')
+        appvol = kplus.Volume.from_config_map(www)
         # defining containeres
         container = kplus.Container(
+            name='nginx',
             image='nginx',
             volume_mounts=[
                 kplus.VolumeMount(
@@ -90,11 +100,12 @@ class nginxs3(cdk8s.Chart):
             port=restgport
         )
         initcontainer = kplus.Container(
+            name='awscli',
             image='amazon/aws-cli',
             args=['s3', 'cp', '--recursive', f"s3://{ress3}/{ress3pfx}/", "/www/"],
             volume_mounts=[
                 kplus.VolumeMount(
-                    path='/usr/share/nginx/html',
+                    path='/www',
                     volume=appvol,
                     read_only=False
                 )
@@ -110,10 +121,11 @@ class nginxs3(cdk8s.Chart):
             #initcontainers=[initcontainer]
             # https://github.com/cdk8s-team/cdk8s/issues/545
         )
+
         # defining a service
         self.service = self.deployment.expose(
             restgport,
-            service_type=kplus.ServiceType.NODE_PORT,
+            service_type=kplus.ServiceType.NODE_PORT
         )
         self.ingress = kplus.Ingress(
             self,
@@ -122,13 +134,12 @@ class nginxs3(cdk8s.Chart):
         for k,v in svcannot.items():
             self.ingress._api_object.metadata.add_annotation(k,v)
 #            print("Key: {0}, Value: {1}".format(k,v))
-        self.ingress.add_host_rule(
-            host=f"{resname}.{appdomain}",
+        self.ingress.add_rule(
             path='/*',
-            backend=kplus.IngressBackend.from_service(self.service)
+            backend=kplus.IngressBackend.from_service(self.service),
         )
 class deployment(cdk8s.Chart):
-    def __init__(self, scope: constructs.Construct, construct_id: str, res: str, svcaccname: str, **kwargs) -> None:
+    def __init__(self, scope: constructs.Construct, construct_id: str, res: str, svcaccname: str, labels: dict, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.svcaccname = svcaccname
@@ -138,6 +149,7 @@ class deployment(cdk8s.Chart):
         ress3 = resmap['Mappings']['Resources'][res]['S3']
         ress3pfx = resmap['Mappings']['Resources'][res]['S3PRFX']
         desircap = resmap['Mappings']['Resources'][res]['desir']
+        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
 
         # defining some common variables
         appvol = kplus.Volume.from_empty_dir('www')
@@ -151,29 +163,31 @@ class deployment(cdk8s.Chart):
                     read_only=True
                 )
             ],
-            port=restgport
+            port=restgport,
+            name=f"{construct_id}"
         )
         initcontainer = kplus.Container(
             image='amazon/aws-cli',
             args=['s3', 'cp', '--recursive', f"s3://{ress3}/{ress3pfx}/", "/www/"],
             volume_mounts=[
                 kplus.VolumeMount(
-                    path='/usr/share/nginx/html',
+                    path='/www',
                     volume=appvol,
                     read_only=False
-                )
-            ]
+                ),
+            ],
+            name='s3cp'
         )
         # defining a deployment
         self.deployment = kplus.Deployment(
             self,
-            f"{construct_id}-deployment",
+            f"{construct_id}",
             replicas=desircap,
             service_account=kplus.ServiceAccount.from_service_account_name(self.svcaccname),
-            containers=[container],
+            containers=[container]
             #initcontainers=[initcontainer]
             # https://github.com/cdk8s-team/cdk8s/issues/545
-        ).select_by_label(key='app', value=f"{construct_id}-{resname}")
+        ).select_by_label(key='app', value=f"{resname}.{appdomain}")
 
 class service(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, res: str, **kwargs) -> None:
@@ -183,13 +197,14 @@ class service(cdk8s.Chart):
         res = res
         resname = resmap['Mappings']['Resources'][res]['NAME']
         restgport = resmap['Mappings']['Resources'][res]['TGPORT']
+        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
         # defining a service
         self.service = kplus.Service(
             self,
             f"{construct_id}-service",
         )
         self.service.serve(port=restgport)
-        self.service.add_selector(label='app', value=f"{construct_id}-{resname}")
+        self.service.add_selector(label='app.kubernetes.io/name', value=f"{resname}.{appdomain}")
 
 class ingress(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, res: str, **kwargs) -> None:
@@ -198,12 +213,11 @@ class ingress(cdk8s.Chart):
         reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
         resname = resmap['Mappings']['Resources'][res]['NAME']
         appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
-        appLabel = { 'app': f"{construct_id}-{resname}"}
         self.ingress = kplus.Ingress(
             self,
-            f"{construct_id}-ingress",
+            "-ing",
         )
-
-
-
+        for k,v in svcannot.items():
+            self.ingress._api_object.metadata.add_annotation(k,v)
+#            print("Key: {0}, Value: {1}".format(k,v))
 

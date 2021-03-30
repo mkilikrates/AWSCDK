@@ -25,6 +25,14 @@ class EksStack(core.Stack):
         self.ipstack = ipstack
         if allowsg != '':
             self.allowsg = allowsg
+        if preflst == True:
+            # get prefix list from file to allow traffic from the office
+            self.map = core.CfnMapping(
+                self,
+                f"{construct_id}Map",
+                mapping=zonemap["Mappings"]["RegionMap"]
+            )
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # get config for resource
         res = res
         resvers = resmap['Mappings']['Resources'][res]['Version']
@@ -59,67 +67,6 @@ class EksStack(core.Stack):
             eksvers = eks.KubernetesVersion.V1_18
         if resvers == "V1_19":
             eksvers = eks.KubernetesVersion.V1_19
-        # create security group for Auto Scale Group
-        self.aseks = ec2.SecurityGroup(
-            self,
-            f"{construct_id}MyEKSsg",
-            allow_all_outbound=True,
-            vpc=self.vpc
-        )
-        # add egress rule
-        ec2.CfnSecurityGroupEgress(
-            self,
-            f"{construct_id}ASGEgressAllIpv4",
-            ip_protocol="-1",
-            cidr_ip="0.0.0.0/0",
-            group_id=self.aseks.security_group_id
-        )
-        if self.ipstack == 'Ipv6':
-            ec2.CfnSecurityGroupEgress(
-                self,
-                f"{construct_id}ASGEgressAllIpv6",
-                ip_protocol="-1",
-                cidr_ipv6="::/0",
-                group_id=self.aseks.security_group_id
-            )
-        # add ingress rule
-        if allowsg != '':
-            self.aseks.add_ingress_rule(
-                self.allowsg,
-                ec2.Port.all_traffic()
-            )
-        if preflst == True:
-            # get prefix list from file to allow traffic from the office
-            self.map = core.CfnMapping(
-                self,
-                f"{construct_id}Map",
-                mapping=zonemap["Mappings"]["RegionMap"]
-            )
-            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
-            self.aseks.add_ingress_rule(
-                ec2.Peer.prefix_list(srcprefix),
-                ec2.Port.all_traffic()
-            )
-        if allowall == True:
-            self.aseks.add_ingress_rule(
-                ec2.Peer.any_ipv4,
-                ec2.Port.all_traffic()
-            )
-            if self.ipstack == 'Ipv6':
-                self.aseks.add_ingress_rule(
-                    ec2.Peer.any_ipv6,
-                    ec2.Port.all_traffic()
-                )
-        if type(allowall) == int or type(allowall) == float:
-            self.aseks.add_ingress_rule(
-                ec2.Peer.any_ipv4(),
-                ec2.Port.tcp(allowall)
-            )
-            if self.ipstack == 'Ipv6':
-                self.aseks.add_ingress_rule(
-                    ec2.Peer.any_ipv6(),
-                    ec2.Port.tcp(allowall)
-                )
         # Iam Role
         self.eksrole = iam.Role(
             self,
@@ -129,6 +76,61 @@ class EksStack(core.Stack):
         )
         self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSServicePolicy'))
         self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSClusterPolicy'))
+        # create security group for LB
+        self.lbsg = ec2.SecurityGroup(
+            self,
+            f"{construct_id}MyLBsg",
+            allow_all_outbound=True,
+            vpc=self.vpc
+        )
+        # add egress rule
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}EgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.lbsg.security_group_id
+        )
+        if self.ipstack == 'Ipv6':
+            ec2.CfnSecurityGroupEgress(
+                self,
+                f"{construct_id}EgressAllIpv6",
+                ip_protocol="-1",
+                cidr_ipv6="::/0",
+                group_id=self.lbsg.security_group_id
+            )
+        # add ingress rule
+        if self.allowsg != '':
+            self.lbsg.add_ingress_rule(
+                self.allowsg,
+                ec2.Port.all_traffic()
+            )
+        if preflst == True:
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.prefix_list(srcprefix),
+                ec2.Port.all_traffic()
+            )
+        if allowall == True:
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.any_ipv4,
+                ec2.Port.all_traffic()
+            )
+            if self.ipstack == 'Ipv6':
+                self.lbsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6,
+                    ec2.Port.all_traffic()
+                )
+        if type(allowall) == int or type(allowall) == float:
+            self.lbsg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(allowall)
+            )
+            if self.ipstack == 'Ipv6':
+                self.lbsg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
         
         if 'desir' in resmap['Mappings']['Resources'][res]:
             rescap = resmap['Mappings']['Resources'][res]['desir']
@@ -147,11 +149,8 @@ class EksStack(core.Stack):
                     default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
                     core_dns_compute_type=eksdnstype,
                     endpoint_access=eksendpt,
-                    #cluster_name=resname,
                     vpc=self.vpc,
-                    #vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
-                    #security_group=self.aseks,
                     role=self.eksrole,
                     output_masters_role_arn=True
                 )
@@ -163,11 +162,8 @@ class EksStack(core.Stack):
                     default_capacity=0,
                     core_dns_compute_type=eksdnstype,
                     endpoint_access=eksendpt,
-                    #cluster_name=resname,
                     vpc=self.vpc,
-                    #vpc_subnets=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=False).subnets,
                     version=eksvers,
-                    #security_group=self.aseks,
                     role=self.eksrole,
                     output_masters_role_arn=True
                 )
@@ -187,10 +183,6 @@ class EksStack(core.Stack):
                         captype = eks.CapacityType.ON_DEMAND
                     if restype == 'SPOT':
                         captype = eks.CapacityType.SPOT
-                    if allowsg != '':
-                        self.allowsg = allowsg
-                    else:
-                        self.allowsg = self.aseks
                     self.eksnodeasg = self.eksclust.add_auto_scaling_group_capacity(
                         f"{construct_id}EKSNodeGrp",
                         instance_type=ec2.InstanceType.of(
@@ -209,7 +201,19 @@ class EksStack(core.Stack):
                         vpc_subnets=ec2.SubnetSelection(
                             subnet_group_name=ressubgrp,one_per_az=False
                         )
-                    ).add_security_group(self.aseks)
+                    )
+                    # add rules to node group security group
+                    self.eksnodeasg.connections.allow_from(self.lbsg, port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow from sg'))
+                    if allowsg != '':
+                        self.eksnodeasg.connections.allow_from(allowsg, port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow from sg'))
+                    if preflst == True:
+                        self.eksnodeasg.connections.allow_from(ec2.Peer.prefix_list(srcprefix), port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow from prefixlist'))
+                    if allowall == True:
+                        self.eksnodeasg.connections.allow_from_any_ipv4()
+                        if self.ipstack == 'Ipv6':
+                            self.eksnodeasg.connections.allow_from(ec2.Peer.any_ipv6(), port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow all from ipv6'))
+                    if self.ipstack == 'Ipv6':
+                        self.eksnodeasg.connections.allow_to(ec2.Peer.any_ipv6(), port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow to anyv6'))
         # add rules to cluster control pane security group
         if allowsg != '':
             #self.eksclust.connections.add_security_group(allowsg)
@@ -218,6 +222,8 @@ class EksStack(core.Stack):
             self.eksclust.connections.allow_default_port_from(ec2.Peer.prefix_list(srcprefix))
         if allowall == True:
             self.eksclust.connections.allow_default_port_from_any_ipv4()
+            if self.ipstack == 'Ipv6':
+                ec2.CfnSecurityGroupIngress(self,f"{construct_id}EKSClusterSGAllowv6",group_id=self.eksclust.cluster_security_group_id, ip_protocol='-1', cidr_ipv6='::/0')
         # create openid provider to be used in rules
         iam.OpenIdConnectPrincipal(self.eksclust.open_id_connect_provider)
         # add custom role to master role of cluster
@@ -240,24 +246,12 @@ class EksStack(core.Stack):
         mynewpol = json.loads(mypolstat)
         for statement in mynewpol['Statement']:
             self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        # # certificate manager
-        # url = 'https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml'
-        # myurl = requests.get(url)
-        # myurlparsed = yaml.parse(myurl.content)
-        # manifest = yaml.dump_all(myurlparsed)
-        # eks.KubernetesManifest(
-        #     self,
-        #     'cert-manager',
-        #     cluster=self.eksclust,
-        #     manifest=manifest,
-        #     overwrite=True,
-        #     skip_validation=True
-        # )
         # load balancer controller
         self.eksclust.add_cdk8s_chart(
             "aws-load-balancer-controller",
             chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name)
         ).node.add_dependency(self.albsvcacc)
+        # outputs
         core.CfnOutput(
             self,
             f"{construct_id}-eksclusterSG",
@@ -273,4 +267,5 @@ class EksStack(core.Stack):
             f"{construct_id}-kubectlRole",
             value=self.eksclust.kubectl_role.role_name
         )
+        
 
