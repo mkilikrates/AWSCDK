@@ -65,7 +65,7 @@ class MyAppStack(core.Stack):
             domtype = "private"
         self.eksclust.add_cdk8s_chart(
             "cdk8sAwsExternalDns",
-            chart=MyChart.extdns(cdk8s.App(),f"external-dns-{appdomain}", domain = appdomain, domaintype = domtype, svcaccount = self.dnsvcacc)
+            chart=MyChart.extdns(cdk8s.App(),f"external-dns-{appdomain}", domain = appdomain, domaintype = domtype, svcaccount = self.dnsvcacc, namespace='default')
         ).node.add_dependency(self.dnsvcacc)
 
         #generate public certificate
@@ -91,15 +91,13 @@ class MyAppStack(core.Stack):
         )
         mysvcannot = {}
         if reselb == 'alb':
-            mysvcannot['kubernetes.io/ingress.class'] = 'alb'
+            # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/ingress/annotations/
+            mysvcannot['kubernetes.io/ingress.class'] = reselb
             mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
             mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
-            mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
             mysvcannot['alb.ingress.kubernetes.io/backend-protocol'] = "HTTP"
             mysvcannot['alb.ingress.kubernetes.io/success-codes'] = "200-499"
             mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
-            if elbsg != '':
-                mysvcannot['alb.ingress.kubernetes.io/security-groups'] = elbsg.security_group_id
             if elbface == True:
                 mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internet-facing'
             if elbface == False:
@@ -108,6 +106,43 @@ class MyAppStack(core.Stack):
                 mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'dualstack'
             else:
                 mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'ipv4'
+            if elbsg != '':
+                mysvcannot['alb.ingress.kubernetes.io/security-groups'] = elbsg.security_group_id
+        if reselb == 'nlb':
+            # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/service/annotations/
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-type'] = reselb
+            mysvcannot['service.beta.kubernetes.io/backend-protocol'] = "tcp"
+            if 'CROSSAZ' in resmap['Mappings']['Resources'][res]:
+                rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
+                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled'] = f"{rescrossaz}"
+            if elbface == True:
+                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internet-facing'
+            if elbface == False:
+                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internal'
+            if self.ipstack == 'Ipv6':
+                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
+            else:
+                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'ipv4'
+        if reselb == 'nlb-ip':
+            # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/service/annotations/
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-type'] = reselb
+            mysvcannot['service.beta.kubernetes.io/backend-protocol'] = "tcp"
+            if 'CROSSAZ' in resmap['Mappings']['Resources'][res]:
+                rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
+                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled'] = f"{rescrossaz}"
+            if 'TGTGRATT' in resmap['Mappings']['Resources'][res]:
+                tgtgrattlist = resmap['Mappings']['Resources'][res]['TGTGRATT']
+                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-target-group-attributes'] = tgtgrattlist
+            if elbface == True:
+                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internet-facing'
+            if elbface == False:
+                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internal'
+            if self.ipstack == 'Ipv6':
+                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
+            else:
+                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'ipv4'
+        mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
+        #print(mysvcannot)
         ########################################### Works
         # # define app chart
         # self.manifest = MyChart.nginxs3(
@@ -163,66 +198,94 @@ class MyAppStack(core.Stack):
                 }
             }
         }
-        # add annotations to service
-        self.mysvc = {
-            'apiVersion': 'v1',
-            'kind': 'Service',
-            'metadata': { 
-                'name': f"{construct_id}-{resname}",
-            },
-            'spec': {
-                'type': "NodePort",
-                'ports': [
-                    {
-                        'port': restgport,
-                        'targetPort': restgport
-                    }
-                ],
-                'selector': appLabel
-            }
-        }
-        self.myingress = {
-            'apiVersion': 'extensions/v1beta1',
-            'kind': 'Ingress',
-            'metadata': { 
-                'name': f"{construct_id}mysvc",
-                'labels': appLabel,
-                'annotations': mysvcannot
-            },
-            'spec': {
-                'rules': [
-                    {
-                        'http': {
-                            'paths' : [
-                                {
-                                    'path' : '/*',
-                                    'backend' : {
-                                        'serviceName' : "ssl-redirect",
-                                        'servicePort' : "use-annotation"
-                                    },
-                                },
-                                {
-                                    'path' : '/*',
-                                    'backend' : {
-                                        'serviceName' : f"{construct_id}-{resname}",
-                                        'servicePort' : restgport
-                                    },
-                                }
-                            ]
+        if reselb == 'alb':
+            # add annotations to service
+            self.mysvc = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': { 
+                    'name': f"{construct_id}-{resname}",
+                },
+                'spec': {
+                    'type': "NodePort",
+                    'ports': [
+                        {
+                            'port': restgport,
+                            'targetPort': restgport
                         }
-                    }
-                ]
+                    ],
+                    'selector': appLabel
+                }
             }
-        }
-                # https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_eks/README.html
-                
-        # deploy 
-        self.manif = eks.KubernetesManifest(
-            self,
-            f"{construct_id}Manifest",
-            cluster=self.eksclust,
-            manifest=[self.mydeploy, self.mysvc, self.myingress]
-        )
+            self.myingress = {
+                'apiVersion': 'extensions/v1beta1',
+                'kind': 'Ingress',
+                'metadata': { 
+                    'name': f"{construct_id}mysvc",
+                    'labels': appLabel,
+                    'annotations': mysvcannot
+                },
+                'spec': {
+                    'rules': [
+                        {
+                            'http': {
+                                'paths' : [
+                                    {
+                                        'path' : '/*',
+                                        'backend' : {
+                                            'serviceName' : "ssl-redirect",
+                                            'servicePort' : "use-annotation"
+                                        },
+                                    },
+                                    {
+                                        'path' : '/*',
+                                        'backend' : {
+                                            'serviceName' : f"{construct_id}-{resname}",
+                                            'servicePort' : restgport
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+            # deploy alb
+            self.manif = eks.KubernetesManifest(
+                self,
+                f"{construct_id}Manifest",
+                cluster=self.eksclust,
+                manifest=[self.mydeploy, self.mysvc, self.myingress]
+            )
+        if reselb == 'nlb' or reselb == 'nlb-ip':
+            # add annotations to service
+            self.mysvc = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': { 
+                    'name': f"{construct_id}-{resname}",
+                    'labels': appLabel,
+                    'annotations': mysvcannot
+                },
+                'spec': {
+                    'externalTrafficPolicy' : 'Cluster',
+                    'type': "LoadBalancer",
+                    'ports': [
+                        {
+                            'port': restgport,
+                            'targetPort': restgport
+                        }
+                    ],
+                    'selector': appLabel
+                }
+            }
+            # deploy alb
+            self.manif = eks.KubernetesManifest(
+                self,
+                f"{construct_id}Manifest",
+                cluster=self.eksclust,
+                manifest=[self.mydeploy, self.mysvc]
+            )
             # show the ELB name
             # core.CfnOutput(
             #     self,

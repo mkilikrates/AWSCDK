@@ -249,7 +249,7 @@ class EksStack(core.Stack):
         # load balancer controller
         self.eksclust.add_cdk8s_chart(
             "aws-load-balancer-controller",
-            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name)
+            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name, namespace='default')
         ).node.add_dependency(self.albsvcacc)
         # outputs
         core.CfnOutput(
