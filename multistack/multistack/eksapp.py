@@ -148,6 +148,14 @@ class MyAppStack(core.Stack):
             sub = self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids
             sublist = ", ".join(str(index) for index in sub)
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-subnets'] = sublist
+            # add some annotation - test
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout'] = "3600"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol'] = "HTTP"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-path'] = "/"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval'] = "10"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout'] = "6"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold'] = "2"
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold'] = "2"
         # create route53 name
         mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
         mysvcannot['external-dns.alpha.kubernetes.io/ttl'] = '60'

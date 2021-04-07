@@ -19,21 +19,16 @@ with open(resconf) as resfile:
     resmap = json.load(resfile)
 
 class cvpn(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, auth, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, auth, res, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
         self.bastionsg = bastionsg
         self.auth = auth
         # get config for resource
-        res = 'cvpn'
         appname = resmap['Mappings']['Resources'][res]['NAME']
         appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
-        if self.auth == 'mutual':
-            clicerarn = resmap['Mappings']['Resources'][res]['CLICERT']
         cvpncidr = resmap['Mappings']['Resources'][res]['CIDR']
-        if self.auth == 'federated':
-            idparn = resmap['Mappings']['Resources'][res]['IDPARN']
         # get hosted zone id
         self.hz = r53.HostedZone.from_lookup(
             self,
@@ -61,39 +56,32 @@ class cvpn(core.Stack):
             log_group=self.cvpnloggroup
         )
         self.authopt = []
-        for authopt in self.authopt:
+        for authopt in self.auth:
             if authopt == 'mutual':
+                clicerarn = resmap['Mappings']['Resources'][res]['CLICERT']
                 self.authopt.append(
-                    ec2.CfnClientVpnEndpointProps.authentication_options(
-                        {
-                            "type": "certificate-authentication",
-                            "mutual_authentication": {
-                                "client_root_certificate_chain_arn": clicert
-                            }
+                    {
+                        "type": "certificate-authentication",
+                        "mutualAuthentication": {
+                            "clientRootCertificateChainArn": clicerarn
                         }
-                    )
-                )
-                clicert = acm.Certificate.from_certificate_arn(
-                    self,
-                    f"{construct_id}:client-certificate",
-                    clicerarn
+                    }
                 )
             if authopt == 'federated':
+                idparn = resmap['Mappings']['Resources'][res]['IDPARN']
                 self.authopt.append(
-                    ec2.CfnClientVpnEndpointProps.authentication_options(
-                        {
-                            "type": "federated-authentication",
-                            "federatedAuthentication": {
-                                "samlProviderArn": idparn
-                            }
+                    {
+                        "type": "federated-authentication",
+                        "federatedAuthentication": {
+                            "samlProviderArn": idparn
                         }
-                    )
+                    }
                 )
         self.cvpn = ec2.CfnClientVpnEndpoint(
             self,
             f"{construct_id}:cvpn",
             description='Client VPN Endpoint Mutual Authentication',
-                authentication_options=self.authopt,
+            authentication_options=self.authopt,
             client_cidr_block=cvpncidr,
             connection_log_options=ec2.CfnClientVpnEndpoint.ConnectionLogOptionsProperty(
                 enabled=True,
@@ -101,12 +89,14 @@ class cvpn(core.Stack):
                 cloudwatch_log_stream=self.cvpnlogstream.log_stream_name
             ),
             server_certificate_arn=self.cert.certificate_arn,
-            split_tunnel=True,
-            vpc_id=self.vpc.vpc_id,
+            client_connect_options=None,
             dns_servers=[
                 '8.8.8.8'
             ],
             security_group_ids=[self.vpc.vpc_default_security_group],
+            self_service_portal='enabled',
+            split_tunnel=True,
+            vpc_id=self.vpc.vpc_id,
         )
         # Network Target 
         for i, subnet in enumerate(self.vpc.isolated_subnets):
