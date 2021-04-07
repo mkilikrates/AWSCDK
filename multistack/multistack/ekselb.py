@@ -40,21 +40,25 @@ class Albctrl(cdk8s.Chart):
         )
         #AwsLoadBalancePolicy.add_policy(VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2, 'aws-load-balancer-controller')
 class extdns(cdk8s.Chart):
-    def __init__(self, scope: constructs.Construct, construct_id: str, domain: str, domaintype: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
+    def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
-        self.domain = domain
         self.svcaccount = svcaccount
-        if domaintype == "private":
-            self.domaintype = AwsZoneTypeOptions.PRIVATE
-        if domaintype == "public":
-            self.domaintype = AwsZoneTypeOptions.PUBLIC
         AwsExternalDns(
             self,
-            f"external-dns-{self.domain}-{self.domaintype}",
-            domain_filter=self.domain,
-            aws_zone_type=self.domaintype
+            "external-dns",
+            domain_filter='',
+            aws_zone_type=AwsZoneTypeOptions.PRIVATE
+            # https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/aws-sd.md
+            # Valid values are public, private, or no value for both
         )
+        AwsExternalDnsPolicyHelper.add_policy(self.svcaccount)
+
+class extdnspol(cdk8s.Chart):
+    def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.svcaccount = svcaccount
         AwsExternalDnsPolicyHelper.add_policy(self.svcaccount)
 
 class Albpol(cdk8s.Chart):

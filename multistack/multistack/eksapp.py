@@ -46,35 +46,30 @@ class MyAppStack(core.Stack):
             namespace=('default')
         )
         # # get hosted zone id
-        self.hz = r53.HostedZone.from_lookup(
-            self,
-            f"{construct_id}:Domain",
-            domain_name=appdomain,
-            private_zone=False
-        )
-        # service account for external dns controller
-        self.dnsvcacc = self.eksclust.add_service_account(
-            "external-dns",
-            name="external-dns",
-            namespace=('default')
-        )
-        # external dns controller
         if elbface == True:
-            domtype = "public"
-        if elbface == False:
-            domtype = "private"
-        self.eksclust.add_cdk8s_chart(
-            "cdk8sAwsExternalDns",
-            chart=MyChart.extdns(cdk8s.App(),f"external-dns-{appdomain}", domain = appdomain, domaintype = domtype, svcaccount = self.dnsvcacc, namespace='default')
-        ).node.add_dependency(self.dnsvcacc)
+            self.hz = r53.HostedZone.from_lookup(
+                self,
+                f"{construct_id}:Domain",
+                domain_name=appdomain,
+                private_zone=False
+            )
+        else:
+            self.hz = r53.PrivateHostedZone.from_lookup(
+                self,
+                f"{construct_id}:PrivDomain",
+                domain_name=appdomain,
+                private_zone=True,
+            )
+            #associate hosted zone with vpc
 
-        #generate public certificate
-        self.cert = acm.Certificate(
-            self,
-            f"{construct_id}:Certificate",
-            domain_name=f"{resname}.{appdomain}",
-            validation=acm.CertificateValidation.from_dns(self.hz)
-        )
+        if reslbport == 443 and elbface == True:
+            #generate public certificate
+            self.cert = acm.Certificate(
+                self,
+                f"{construct_id}:Certificate",
+                domain_name=f"{resname}.{appdomain}",
+                validation=acm.CertificateValidation.from_dns(self.hz)
+            )
         # check if want to want copy files to nginx test
         self.mysvcacc.add_to_principal_policy(
             statement=iam.PolicyStatement(
@@ -93,11 +88,15 @@ class MyAppStack(core.Stack):
         if reselb == 'alb':
             # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/ingress/annotations/
             mysvcannot['kubernetes.io/ingress.class'] = reselb
-            mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
-            mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
+            if reslbport == 443 and elbface == True:
+                mysvcannot['alb.ingress.kubernetes.io/certificate-arn'] = self.cert.certificate_arn
             mysvcannot['alb.ingress.kubernetes.io/backend-protocol'] = "HTTP"
             mysvcannot['alb.ingress.kubernetes.io/success-codes'] = "200-499"
-            mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
+            if reslbport == 443:
+                mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}, {"HTTPS": ' + str(reslbport) + '}]'
+                mysvcannot['alb.ingress.kubernetes.io/actions.ssl-redirect'] = '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
+            else:
+                mysvcannot['alb.ingress.kubernetes.io/listen-ports'] = '[{"HTTP": 80}]'
             if elbface == True:
                 mysvcannot['alb.ingress.kubernetes.io/scheme'] = 'internet-facing'
             if elbface == False:
@@ -108,6 +107,9 @@ class MyAppStack(core.Stack):
                 mysvcannot['alb.ingress.kubernetes.io/ip-address-type'] = 'ipv4'
             if elbsg != '':
                 mysvcannot['alb.ingress.kubernetes.io/security-groups'] = elbsg.security_group_id
+            sub = self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids
+            sublist = ", ".join(str(index) for index in sub)
+            mysvcannot['alb.ingress.kubernetes.io/subnets'] = sublist
         if reselb == 'nlb':
             # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/service/annotations/
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-type'] = reselb
@@ -116,13 +118,16 @@ class MyAppStack(core.Stack):
                 rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
                 mysvcannot['service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled'] = f"{rescrossaz}"
             if elbface == True:
-                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internet-facing'
+                if self.ipstack == 'Ipv6':
+                    mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
+                else:
+                    mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'ipv4'
             if elbface == False:
-                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internal'
-            if self.ipstack == 'Ipv6':
-                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
-            else:
+                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-internal'] = 'true'
                 mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'ipv4'
+            sub = self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids
+            sublist = ", ".join(str(index) for index in sub)
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-subnets'] = sublist
         if reselb == 'nlb-ip':
             # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/service/annotations/
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-type'] = reselb
@@ -133,15 +138,22 @@ class MyAppStack(core.Stack):
             if 'TGTGRATT' in resmap['Mappings']['Resources'][res]:
                 tgtgrattlist = resmap['Mappings']['Resources'][res]['TGTGRATT']
                 mysvcannot['service.beta.kubernetes.io/aws-load-balancer-target-group-attributes'] = tgtgrattlist
-            if elbface == True:
-                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internet-facing'
             if elbface == False:
-                mysvcannot['service.beta.kubernetes.io/scheme'] = 'internal'
-            if self.ipstack == 'Ipv6':
-                mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
+                mysvcannot['service.beta.kubernetes.io/aws-load-balancer-internal'] = 'true'
+            if elbface == True:
+                if self.ipstack == 'Ipv6':
+                    mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'dualstack'
             else:
                 mysvcannot['service.beta.kubernetes.io/ip-address-type'] = 'ipv4'
+            sub = self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids
+            sublist = ", ".join(str(index) for index in sub)
+            mysvcannot['service.beta.kubernetes.io/aws-load-balancer-subnets'] = sublist
+        # create route53 name
         mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
+        mysvcannot['external-dns.alpha.kubernetes.io/ttl'] = '60'
+        # When this annotation is set，the loadbalancers will only register nodes
+        # with pod running on it, otherwise all nodes will be registered.
+        mysvcannot['service.kubernetes.io/local-svc-only-bind-node-with-pod'] = 'true'
         #print(mysvcannot)
         ########################################### Works
         # # define app chart
@@ -268,7 +280,7 @@ class MyAppStack(core.Stack):
                     'annotations': mysvcannot
                 },
                 'spec': {
-                    'externalTrafficPolicy' : 'Cluster',
+                    'externalTrafficPolicy' : 'Local',
                     'type': "LoadBalancer",
                     'ports': [
                         {

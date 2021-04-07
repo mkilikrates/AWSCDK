@@ -251,6 +251,24 @@ class EksStack(core.Stack):
             "aws-load-balancer-controller",
             chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name, namespace='default')
         ).node.add_dependency(self.albsvcacc)
+        # service account for external dns controller
+        self.dnsvcacc = self.eksclust.add_service_account(
+            "external-dns",
+            name="external-dns",
+            namespace=('default')
+        )
+        # external dns controller
+        self.manifest = MyChart.extdns(
+                cdk8s.App(),
+                "Manifest-external-dns",
+                svcaccount = self.dnsvcacc,
+        )
+        # apply chart
+        self.chart = self.eksclust.add_cdk8s_chart(
+            "external-dns",
+            chart=self.manifest
+        ).node.add_dependency(self.dnsvcacc)
+
         # outputs
         core.CfnOutput(
             self,

@@ -24,10 +24,10 @@ myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envi
 remoteregion = 'us-east-1'
 route = 'bgp'
 gwtype = 'tgw'
-ipstack = 'Ipv6'
+ipstack = 'Ipv4'
 app = core.App()
 VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 3, ipstack = ipstack)
-#FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
+FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'apachephphttp2dmz', preflst = True, allowall = '', ipstack = ipstack, allowsg = BationStack.bastionsg, vpc = VPCStack.vpc)
@@ -42,5 +42,5 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 EKStack = eks(app, "myeks", env=myenv, res = 'myeksprivec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
-EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbfe', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
+EKSAppStack2 = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbbe', preflst = False, allowsg = BationStack.bastionsg, allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
 app.synth()
