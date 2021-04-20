@@ -20,6 +20,8 @@ aws_cdk.aws_ram
 aws_cdk.aws_directoryservice
 aws_cdk.aws_secretsmanager
 aws_cdk.aws_eks
+aws_cdk.aws_ecs
+aws_cdk.aws_ecs_patterns
 PyYAML
 constructs
 cdk8s

@@ -251,7 +251,8 @@ class VPCEStack(core.Stack):
                         vpc=self.vpc,
                         service=vpcesrv,
                         subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                        security_groups=[self.vpcesg]
+                        security_groups=[self.vpcesg],
+                        #private_dns_enabled=False
                     )
                 else:
                     ec2.InterfaceVpcEndpoint(
