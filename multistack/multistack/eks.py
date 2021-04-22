@@ -18,7 +18,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EksStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, role = iam.Role, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -67,7 +67,7 @@ class EksStack(core.Stack):
             eksvers = eks.KubernetesVersion.V1_18
         if resvers == "V1_19":
             eksvers = eks.KubernetesVersion.V1_19
-        # Iam Role
+        # Iam Role for cluster
         self.eksrole = iam.Role(
             self,
             f"{construct_id}-role",
@@ -76,6 +76,13 @@ class EksStack(core.Stack):
         )
         self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSServicePolicy'))
         self.eksrole.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSClusterPolicy'))
+        # Iam Master Role for management this cluster
+        self.msteksrole = iam.Role(
+            self,
+            f"{construct_id}-AdminRole",
+            assumed_by=iam.AccountRootPrincipal(),
+            description="Master Role for EKS Cluster",
+        )
         # create security group for LB
         self.lbsg = ec2.SecurityGroup(
             self,
@@ -152,6 +159,7 @@ class EksStack(core.Stack):
                     vpc=self.vpc,
                     version=eksvers,
                     role=self.eksrole,
+                    masters_role=self.msteksrole,
                     output_masters_role_arn=True
                 )
         else:
@@ -165,6 +173,7 @@ class EksStack(core.Stack):
                     vpc=self.vpc,
                     version=eksvers,
                     role=self.eksrole,
+                    masters_role=self.msteksrole,
                     output_masters_role_arn=True
                 )
                 if 'NodeGrp' in resmap['Mappings']['Resources'][res]:
@@ -230,44 +239,17 @@ class EksStack(core.Stack):
         if resrole != '':
             myrole = iam.Role.from_role_arn(
                 self,
-                f"{construct_id}AddRole",
+                f"{construct_id}AddResourceRole",
                 f"arn:{core.Aws.PARTITION}:iam:{core.Aws.ACCOUNT_ID}:role/{resrole}"
             )
             self.eksclust.aws_auth.add_masters_role(myrole)
-        # service account for load balancer
-        self.albsvcacc = self.eksclust.add_service_account(
-            "aws-load-balancer-controller",
-            name="aws-load-balancer-controller",
-            namespace=('default')
-        )
-        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
-        mypol = requests.get(url)
-        mypolstat = json.dumps(mypol.json())
-        mynewpol = json.loads(mypolstat)
-        for statement in mynewpol['Statement']:
-            self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        # load balancer controller
-        self.eksclust.add_cdk8s_chart(
-            "aws-load-balancer-controller",
-            chart=MyChart.Albctrl(cdk8s.App(),"aws-load-balancer-controller", clustername = self.eksclust.cluster_name, namespace='default')
-        ).node.add_dependency(self.albsvcacc)
-        # service account for external dns controller
-        self.dnsvcacc = self.eksclust.add_service_account(
-            "external-dns",
-            name="external-dns",
-            namespace=('default')
-        )
-        # external dns controller
-        self.manifest = MyChart.extdns(
-                cdk8s.App(),
-                "Manifest-external-dns",
-                svcaccount = self.dnsvcacc,
-        )
-        # apply chart
-        self.chart = self.eksclust.add_cdk8s_chart(
-            "external-dns",
-            chart=self.manifest
-        ).node.add_dependency(self.dnsvcacc)
+        if role != '':
+            tmpltrole = iam.Role.from_role_arn(
+                self,
+                f"{construct_id}AddTemplateRole",
+                role_arn=role
+            )
+            self.eksclust.aws_auth.add_masters_role(tmpltrole)
 
         # outputs
         core.CfnOutput(

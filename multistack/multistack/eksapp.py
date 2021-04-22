@@ -306,12 +306,18 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc]
             )
-            # show the ELB name
-            # core.CfnOutput(
-            #     self,
-            #     f"{construct_id}:ALB DNS",
-            #     value=self.eksclust.get_service_load_balancer_address(f"{construct_id}mysvc")
-            # )
+        # #show the ELB name
+        # core.CfnOutput(
+        #     self,
+        #     f"{construct_id}:ALB DNS",
+        #     value=self.eksclust.get_service_load_balancer_address(f"{construct_id}-{resname}")
+        # )
+        #show the APP DNS
+        core.CfnOutput(
+            self,
+            f"{construct_id}:APP DNS",
+            value=f"{resname}.{appdomain}"
+        )
 
 
 

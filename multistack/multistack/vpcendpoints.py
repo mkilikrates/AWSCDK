@@ -29,43 +29,41 @@ class VPCEStack(core.Stack):
             resname = endpt['Name']
             mypol =''
             if 'POLICE' in endpt:
-                mypol = {}
-                if 'Actions' in endpt['POLICE']:
-                    mypol["actions"] = endpt['POLICE']['Actions']
-                if 'Conditions' in endpt['POLICE']:
-                    mypol["conditions"] = endpt['POLICE']['Conditions']
-                if 'Effect' in endpt['POLICE']:
-                    if endpt['POLICE']['Effect'] == "allow":
-                        mypol["effect"] = iam.Effect.ALLOW
-                    if endpt['POLICE']['Effect'] == "deny":
-                        mypol["effect"] = iam.Effect.DENY
-                if 'NoActions' in endpt['POLICE']:
-                    mypol["not_actions"] = endpt['POLICE']['NoActions']
-                if 'NoResources' in endpt['POLICE']:
-                    mypol["not_resources"] = endpt['POLICE']['NoResources']
-                if 'Principals' in endpt['POLICE']:
-                    mypol["principals"] = [iam.ArnPrincipal(endpt['POLICE']['Principals'])]
-                if 'NoPrincipals' in endpt['POLICE']:
-                    mypol["not_principals"] = endpt['POLICE']['NoPrincipals']
-                if 'Resources' in endpt['POLICE']:
-                    mypol["resources"] = endpt['POLICE']['Resources']
-                if 'SID' in endpt['POLICE']:
-                    mypol["sid"] = endpt['POLICE']['SID']
+                mypol = []
+                for police in endpt['POLICE']:
+                    newpol = {}
+                    if 'Actions' in police:
+                        newpol["actions"] = police['Actions']
+                    if 'Conditions' in police:
+                        newpol["conditions"] = police['Conditions']
+                    if 'Effect' in police:
+                        if police['Effect'] == "allow":
+                            newpol["effect"] = iam.Effect.ALLOW
+                        if police['Effect'] == "deny":
+                            newpol["effect"] = iam.Effect.DENY
+                    if 'NoActions' in police:
+                        newpol["not_actions"] = police['NoActions']
+                    if 'NoResources' in police:
+                        newpol["not_resources"] = police['NoResources']
+                    if 'Principals' in police:
+                        newpol["principals"] = [iam.ArnPrincipal(police['Principals'])]
+                    if 'NoPrincipals' in police:
+                        newpol["not_principals"] = police['NoPrincipals']
+                    if 'Resources' in police:
+                        newpol["resources"] = police['Resources']
+                    if 'SID' in police:
+                        newpol["sid"] = police['SID']
+                    mypol.append(iam.PolicyStatement(**newpol))
             if restype == 'Gateway':
-                if mypol == '':
-                    ec2.GatewayVpcEndpoint(
-                        self,
-                        f"{construct_id}:{resname}",
-                        vpc=self.vpc,
-                        service=ec2.GatewayVpcEndpointAwsService.S3,
-                    )
-                else:
-                    ec2.GatewayVpcEndpoint(
-                        self,
-                        f"{construct_id}:{resname}",
-                        vpc=self.vpc,
-                        service=ec2.GatewayVpcEndpointAwsService.S3,
-                    ).add_to_policy(iam.PolicyStatement(**mypol))
+                mys3gw = ec2.GatewayVpcEndpoint(
+                    self,
+                    f"{construct_id}:{resname}",
+                    vpc=self.vpc,
+                    service=ec2.GatewayVpcEndpointAwsService.S3,
+                )
+                if mypol != '':
+                    for police in mypol:
+                        mys3gw.add_to_policy(police)
             if restype == 'Interface':
                 # create security group for Interface VPC Endpoints
                 if counter == 0:

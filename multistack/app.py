@@ -16,6 +16,10 @@ from multistack.ds import myds
 from multistack.eks import EksStack as eks
 from multistack.ecs import EcsStack as ecs
 from multistack.eksapp import MyAppStack as eksapp
+from multistack.eksctrl import (
+    eksDNS as eksdns,
+    eksELB as ekselb
+    )
 from multistack.netfw import (
     internetfw as netfw,
     fwroutes as netfwrt
@@ -32,7 +36,7 @@ FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
 VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'EKSEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 #VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 1, maxaz = 3, ipstack = ipstack)
 #FlowLogsStack2 = flowlogs(app, "MY-VPCFLOW2", env=myenv, vpc = VPCStack2.vpc)
-BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastion', preflst = True, allowall = '', ipstack = ipstack, allowsg = '', vpc = VPCStack.vpc).add_dependency(VpcEndpointsStack)
 #ASGStack2 = asg(app, "MY-ASG2", env=myenv, res = 'simpletshoot', preflst = False, allowall = '', ipstack = ipstack, allowsg = BationStack2.bastionsg, vpc = VPCStack2.vpc)
@@ -46,8 +50,10 @@ BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = T
 #CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpnmutual', auth = ['mutual'], vpc = VPCStack.vpc)
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
-#EKStack = eks(app, "myeks", env=myenv, res = 'myeksprivec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ipstack = ipstack, vpc = VPCStack.vpc).add_dependency(VpcEndpointsStack)
-#EKSAppStack2 = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbbe', preflst = False, allowsg = BationStack.bastionsg, allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
-ECStack = ecs(app, "myecs", env=myenv, res = 'myecsAsgpriv', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
-ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = False, allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ECStack.srvc, vpc = VPCStack.vpc)
+EKStack = eks(app, "myeks", env=myenv, res = 'myeksprivec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ipstack = ipstack, role = BationStack.bastion.role.role_arn, vpc = VPCStack.vpc)
+EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbfe', preflst = False, allowsg = BationStack.bastionsg, allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
+#ECStack = ecs(app, "myecs", env=myenv, res = 'myecsAsgpriv', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
+#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = False, allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ECStack.srvc, vpc = VPCStack.vpc)
 app.synth()
