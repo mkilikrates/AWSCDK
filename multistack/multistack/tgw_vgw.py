@@ -13,7 +13,7 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class mygw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, ipstack, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, ipstack, vpc = ec2.Vpc, vpcname = str, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -24,54 +24,31 @@ class mygw(core.Stack):
             vgasn = zonemap['Mappings']['RegionMap'][region]['ASN']
         if self.route == 'static':
             vgasn = 64512
-        # create prefix list for RFC1918
-        mynet10rfc1918 = ec2.CfnPrefixList.EntryProperty(
-            cidr='10.0.0.0/8',
-            description='Network 10.0.0.0/8 from RFC1918'
-        )
-        mynet172rfc1918 = ec2.CfnPrefixList.EntryProperty(
-            cidr='172.16.0.0/12',
-            description='Network 172.16.0.0/12 from RFC1918'
-        )
-        mynet192rfc1918 = ec2.CfnPrefixList.EntryProperty(
-            cidr='192.168.0.0/16',
-            description='Network 192.168.0.0/16 from RFC1918'
-        )
-        myrfc1918 = ec2.CfnPrefixList(
-            self,
-            id=f"pl-rfc1918" + region,
-            address_family='IPv4',
-            max_entries=5,
-            prefix_list_name=f"pl-rfc1918" + region,
-            entries=[
-                mynet10rfc1918,
-                mynet172rfc1918,
-                mynet192rfc1918
-            ]
-        )
-        # allow traffic from RFC1918 to make tests from bastion
-        ec2.CfnSecurityGroupIngress(
-            self,
-            "MyBastionIngress10",
-            ip_protocol="-1",
-            source_prefix_list_id=myrfc1918.ref,
-            group_id=bastionsg.security_group_id
-        )
         if gwtype == 'tgw':
+            resconf = "resourcesmap.cfg"
+            with open(resconf) as resfile:
+                resmap = json.load(resfile)
+            # get data for resource sharing
+            resname = resmap['Mappings']['Resources'][res]['NAME']
+            resallowext = resmap['Mappings']['Resources'][res]['EXTERN']
+            resaccept = resmap['Mappings']['Resources'][res]['AUTOACCEPT']
+            resdefrt = resmap['Mappings']['Resources'][res]['DEFRT']
+            resdefrtass = resmap['Mappings']['Resources'][res]['DEFRTASS']
+            resmcast = resmap['Mappings']['Resources'][res]['MCAST']
             if gwid =='':
                 # create transit gateway
                 self.gw = ec2.CfnTransitGateway(
                     self,
-                    id=f"TGW-" + region,
+                    id=f"tgw-{region}",
                     amazon_side_asn=vgasn,
-                    auto_accept_shared_attachments='enable',
-                    default_route_table_association='enable',
-                    default_route_table_propagation='enable',
-                    multicast_support='enable',
+                    auto_accept_shared_attachments=resaccept,
+                    default_route_table_association=resdefrt,
+                    default_route_table_propagation=resdefrtass,
+                    multicast_support=resmcast,
                     tags=[
                         core.CfnTag(
                             key='Name',
-                            value=f"tgw-" + region
+                            value=f"tgw-{region}"
                         )
                     ]
                 )
@@ -88,118 +65,122 @@ class mygw(core.Stack):
                     value=f"arn:{partition}:ec2:{region}:{account}:transit-gateway/{gw}",
                     export_name=f"{construct_id}:gwArn"
                 )
-                res = res
-                if res != '':
-                    resconf = "resourcesmap.cfg"
-                    with open(resconf) as resfile:
-                        resmap = json.load(resfile)
-                    # get data for resource sharing
-                    resname = resmap['Mappings']['Resources'][res]['NAME']
-                    resallowext = resmap['Mappings']['Resources'][res]['EXTERN']
+                # share ram
+                if 'Principals' in resmap['Mappings']['Resources'][res]:
                     resprinc = resmap['Mappings']['Resources'][res]['Principals']
                     arnlist = f"arn:{core.Aws.PARTITION}:ec2:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:transit-gateway/{gw}"
                     self.ram = ram.CfnResourceShare(
                         self,
-                        f"{construct_id}",
+                        f"{construct_id}-ram",
                         name=resname,
                         allow_external_principals=resallowext,
                         principals=resprinc,
                         resource_arns=[arnlist]
                     )
+                # create tgw route tables if needed
+                if 'RT' in resmap['Mappings']['Resources'][res]:
+                    for routetable in resmap['Mappings']['Resources'][res]['RT']:
+                        rtname = routetable['Name']
+                        mytgwrt = ec2.CfnTransitGatewayRouteTable(
+                            self,
+                            f"{construct_id}-tgwrt-{rtname}",
+                            transit_gateway_id=gw,
+                            tags=[
+                                core.CfnTag(
+                                    key='Name',
+                                    value=f"tgw-{region}-tgwrt-{rtname}"
+                                )
+                            ]
+                        ).override_logical_id(new_logical_id=f"tgwrt{rtname}")
+
+                        self.gwId = core.CfnOutput(
+                            self,
+                            f"tgw-{region}-tgwrt-{rtname}-out",
+                            value=f"tgw-{region}-tgwrt-{rtname}",
+                            export_name=f"tgw-{region}-tgwrt-{rtname}-out"
+                        )
+                        
             else:
                 gw = gwid
             # attach transit gateway to vpc
             self.gwattch = ec2.CfnTransitGatewayAttachment(
                 self,
-                id=f"tgw-vpc-" + region + "-attachment",
+                id=f"tgw-vpc-{region}-attachment",
                 transit_gateway_id=gw,
                 vpc_id=self.vpc.vpc_id,
-                subnet_ids=[subnet.subnet_id for subnet in self.vpc.isolated_subnets],
+                subnet_ids=self.vpc.select_subnets(subnet_group_name='Endpoints',one_per_az=True).subnet_ids,
                 tags=[
                     core.CfnTag(
                         key='Name',
-                        value=f"tgw-" + self.vpc.vpc_id + "-attachment"
+                        value=f"tgw-{self.vpc.vpc_id}-attachment"
                     )
                 ]
             )
-            # add routes target RFC1918 to tgw
-            # Net 10/8
-            for subnet in self.vpc.public_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpub-" + subnet.availability_zone + "-ne10-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='10.0.0.0/8',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.private_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpriv-" + subnet.availability_zone + "-ne10-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='10.0.0.0/8',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.isolated_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtisol-" + subnet.availability_zone + "-ne10-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='10.0.0.0/8',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            # Net 172.16/12
-            for subnet in self.vpc.public_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpub-" + subnet.availability_zone + "-ne172-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='172.16.0.0/12',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.private_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpriv-" + subnet.availability_zone + "-ne172-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='172.16.0.0/12',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.isolated_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtisol-" + subnet.availability_zone + "-ne172-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='172.16.0.0/12',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            # Net 192.168/16
-            for subnet in self.vpc.public_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpub-" + subnet.availability_zone + "-ne192-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='192.168.0.0/16',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.private_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtpriv-" + subnet.availability_zone + "-ne192-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='192.168.0.0/16',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            for subnet in self.vpc.isolated_subnets:
-                ec2.CfnRoute(
-                    self,
-                    id=f"vpc-rtisol-" + subnet.availability_zone + "-ne192-tgw",
-                    route_table_id=subnet.route_table.route_table_id,
-                    destination_cidr_block='192.168.0.0/16',
-                    transit_gateway_id=gw
-                ).add_depends_on(self.gwattch)
-            # create a list of vpcs ipv6 cidr to add routes
-            # if self.vpc.stack == 'Ipv6':
+            # add tgw route tables
+            if 'RT' in resmap['Mappings']['Resources'][res]:
+                for routetable in resmap['Mappings']['Resources'][res]['RT']:
+                    rtname = routetable['Name']
+                    if 'TGRT' in routetable:
+                        rttgrt = routetable['TGRT']
+                        if rttgrt == vpcname:
+                            if 'Routes' in routetable:
+                                index = 0
+                                for rt in routetable['Routes']:
+                                    ec2.CfnTransitGatewayRoute(
+                                        self,
+                                        f"tgw-{region}-tgwrt-{rtname}-{index}",
+                                        destination_cidr_block=rt,
+                                        transit_gateway_attachment_id=self.gwattch.ref,
+                                        transit_gateway_route_table_id=(f"tgwrt{rtname}")
+                                    ).add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+                                    index = index + 1
+                    # VPC Propagation CIDR to TGW Route Table
+                    if 'PROPAG' in routetable:
+                        index = 0
+                        for rtpropag in routetable['PROPAG']:
+                            if rtpropag == vpcname:
+                                ec2.CfnTransitGatewayRouteTablePropagation(
+                                    self,
+                                    f"tgwrt-prop-{rtname}-vpc-{vpcname}-{index}",
+                                    transit_gateway_attachment_id=self.gwattch.ref,
+                                    transit_gateway_route_table_id=(f"tgwrt{rtname}")
+                                ).add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+                    # VPC Association with TGW Route Table
+                    if 'ASSOC' in routetable:
+                        for rtassoc in routetable['ASSOC']:
+                            if rtassoc == vpcname:
+                                ec2.CfnTransitGatewayRouteTableAssociation(
+                                    self,
+                                    id=f"tgwrt-ass-{rtname}-vpc-{vpcname}",
+                                    transit_gateway_attachment_id=self.gwattch.ref,
+                                    transit_gateway_route_table_id=(f"tgwrt{rtname}")
+                                ).add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+                                # add routes to tgw in vpc
+                                for subtype in resmap['Mappings']['Resources'][vpcname]['SUBNETS']:
+                                    for each in subtype:
+                                        for sub in subtype[each]:
+                                            index = 0
+                                            if each == 'PRIVATE':
+                                                subnetlist = self.vpc.private_subnets
+                                            elif each == 'PUBLIC':
+                                                subnetlist = self.vpc.public_subnets
+                                            elif each == 'ISOLATED':
+                                                subnetlist = self.vpc.isolated_subnets
+                                            if 'TGWRT' in sub:
+                                                idx = 0
+                                                for rt in sub['TGWRT']:
+                                                    idx2 = 0
+                                                    for subnet in subnetlist:
+                                                        ec2.CfnRoute(
+                                                            self,
+                                                            id=f"vpc-rt-{each}-{subnet.availability_zone}-{index}-{idx}-{idx2}",
+                                                            route_table_id=subnet.route_table.route_table_id,
+                                                            destination_cidr_block=rt,
+                                                            transit_gateway_id=gw
+                                                        ).add_depends_on(self.gwattch)
+                                                        idx2 = idx2 + 1
+                                                    idx = idx + 1
+                                                index = index + 1
         if gwtype == 'vgw':
             self.gw = gwid
             # create Virtual private gateway

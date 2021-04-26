@@ -62,6 +62,12 @@ class VPC(core.Stack):
             nat_gateways=self.natgw,
             subnet_configuration=self.sub
         )
+        self.vpcname = core.CfnOutput(
+            self,
+            f"{construct_id}:vpcName",
+            value=f"{resname}",
+            export_name=f"{construct_id}:vpcName"
+        )
         core.CfnOutput(
             self,
             f"{construct_id}:vpcId",
