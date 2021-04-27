@@ -79,7 +79,7 @@ class main(core.Stack):
             )
         if allowall == True:
             self.asgsg.add_ingress_rule(
-                ec2.Peer.any_ipv4,
+                ec2.Peer.any_ipv4(),
                 ec2.Port.all_traffic()
             )
             if self.ipstack == 'Ipv6':
