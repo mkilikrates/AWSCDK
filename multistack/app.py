@@ -16,13 +16,10 @@ from multistack.ds import myds
 from multistack.eks import EksStack as eks
 from multistack.ecs import EcsStack as ecs
 from multistack.eksapp import MyAppStack as eksapp
+from multistack.netfw import internetfw as netfw
 from multistack.eksctrl import (
     eksDNS as eksdns,
     eksELB as ekselb
-    )
-from multistack.netfw import (
-    internetfw as netfw,
-    fwroutes as netfwrt
     )
 myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"]))
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = 'us-east-1')
@@ -35,16 +32,18 @@ VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'inspectvpc', cidrid = 0, natgw =
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
 NetFWStack = netfw(app, "MYNETFW", env=myenv, vpc = VPCStack.vpc)
 GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'inspectvpc', bastionsg = '', tgwstack = '')
-VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpcsec', cidrid = 1, natgw = 0, maxaz = 3, ipstack = ipstack)
-GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = 'tgw-026aa30aa18280d8d', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack)
-VPCStack3 = VPC(app, "MY-VPC3", env=myenv, res = 'vpcsec', cidrid = 2, natgw = 0, maxaz = 3, ipstack = ipstack)
-GatewayStack3 = mygw(app, "MY-GATEWAY3", env=myenv, gwtype = gwtype, gwid = 'tgw-026aa30aa18280d8d', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack3.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack)
 ASGStack = asg(app, "MY-ASG", env=myenv, res = 'bastion', preflst = True, allowall = '', ipstack = ipstack, allowsg = '', vpc = VPCStack.vpc)
+VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpcsec', cidrid = 1, natgw = 0, maxaz = 3, ipstack = ipstack)
+GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack)
 ASGStack2 = asg(app, "MY-ASG2", env=myenv, res = 'bastionsimpleiso', preflst = '', allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
+VPCStack3 = VPC(app, "MY-VPC3", env=myenv, res = 'vpcsec', cidrid = 2, natgw = 0, maxaz = 3, ipstack = ipstack)
+GatewayStack3 = mygw(app, "MY-GATEWAY3", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack3.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack)
 ASGStack3 = asg(app, "MY-ASG3", env=myenv, res = 'bastionsimpleiso', preflst = '', allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack3.vpc)
-#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'EKSEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
+#VPCStack4 = VPC(app, "MY-VPC4", env=myenv, res = 'vpcsec', cidrid = 3, natgw = 0, maxaz = 3, ipstack = ipstack)
+#ASGStack4 = asg(app, "MY-ASG4", env=myenv, res = 'bastionsimpleiso2', preflst = '', allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack4.vpc)
+#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'myctEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 #FlowLogsStack2 = flowlogs(app, "MY-VPCFLOW2", env=myenv, vpc = VPCStack2.vpc)
-#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc).add_dependency(VpcEndpointsStack)
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gw.ref, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, bastionsg = BationStack2.bastionsg)
