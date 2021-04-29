@@ -107,7 +107,6 @@ class internetfw(core.Stack):
                     generated_rules_type='DENYLIST',
                     targets=[
                         '.google',
-                        '.google.',
                         '.google.com'
                     ],
                     target_types=[
@@ -238,13 +237,13 @@ class internetfw(core.Stack):
 
         endpointlist = self.netfirewall.attr_endpoint_ids
         index = 0
-        while index <= len(endpointlist):
+        while index <= (len(endpointlist) + 1):
             fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             core.CfnOutput(
                 self,
                 f"{construct_id}OutNetwFwEnd-{index}",
-                value=core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids))),
+                value=f"{fwendpoint_id}:{fwendpoint_az}",
                 export_name=f"NetwFwEnd{index}"
             ).override_logical_id(new_logical_id=f"fwendpoint{index}")
             index = index + 1
