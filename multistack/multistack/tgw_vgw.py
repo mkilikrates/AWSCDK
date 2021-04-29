@@ -17,7 +17,7 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class mygw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, ipstack, tgwstack = core.Stack, vpc = ec2.Vpc, vpcname = str, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, gwtype, route, res, ipstack, tgwstack = core.Stack, vpc = ec2.Vpc, vpcname = str, bastionsg = ec2.SecurityGroup, gwid = ec2.CfnTransitGateway, cross = bool, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -169,84 +169,84 @@ class mygw(core.Stack):
                     }
                 ]
             )
-            # add tgw route tables
-            if 'RT' in resmap['Mappings']['Resources'][res]:
-                for routetable in resmap['Mappings']['Resources'][res]['RT']:
-                    rtname = routetable['Name']
-                    if 'TGRT' in routetable:
-                        rttgrt = routetable['TGRT']
-                        if rttgrt == vpcname:
-                            if 'Routes' in routetable:
-                                index = 0
-                                for rt in routetable['Routes']:
-                                    myrt = ec2.CfnTransitGatewayRoute(
+            if cross == False:
+                # add tgw route tables
+                if 'RT' in resmap['Mappings']['Resources'][res]:
+                    for routetable in resmap['Mappings']['Resources'][res]['RT']:
+                        rtname = routetable['Name']
+                        if 'TGRT' in routetable:
+                            rttgrt = routetable['TGRT']
+                            if rttgrt == vpcname:
+                                if 'Routes' in routetable:
+                                    index = 0
+                                    for rt in routetable['Routes']:
+                                        myrt = ec2.CfnTransitGatewayRoute(
+                                            self,
+                                            f"tgw-{region}-tgwrt-{rtname}-{index}",
+                                            destination_cidr_block=rt,
+                                            transit_gateway_attachment_id=self.gwattch.ref,
+                                            transit_gateway_route_table_id=(f"tgwrt{rtname}")
+                                        )
+                                        if tgwstack != '':
+                                            myrt.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
+                                        else:
+                                            myrt.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+                                        index = index + 1
+                        # VPC Propagation CIDR to TGW Route Table
+                        if 'PROPAG' in routetable:
+                            index = 0
+                            for rtpropag in routetable['PROPAG']:
+                                if rtpropag == vpcname:
+                                    myrtpropag = ec2.CfnTransitGatewayRouteTablePropagation(
                                         self,
-                                        f"tgw-{region}-tgwrt-{rtname}-{index}",
-                                        destination_cidr_block=rt,
+                                        f"tgwrt-prop-{rtname}-vpc-{vpcname}-{index}",
                                         transit_gateway_attachment_id=self.gwattch.ref,
                                         transit_gateway_route_table_id=(f"tgwrt{rtname}")
                                     )
                                     if tgwstack != '':
-                                        myrt.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
+                                        myrtpropag.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
                                     else:
-                                        myrt.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
-                                    index = index + 1
-                    # VPC Propagation CIDR to TGW Route Table
-                    if 'PROPAG' in routetable:
+                                        myrtpropag.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+                        # VPC Association with TGW Route Table
+                        if 'ASSOC' in routetable:
+                            for rtassoc in routetable['ASSOC']:
+                                if rtassoc == vpcname:
+                                    myrtass = ec2.CfnTransitGatewayRouteTableAssociation(
+                                        self,
+                                        id=f"tgwrt-ass-{rtname}-vpc-{vpcname}",
+                                        transit_gateway_attachment_id=self.gwattch.ref,
+                                        transit_gateway_route_table_id=(f"tgwrt{rtname}")
+                                    )
+                                    if tgwstack != '':
+                                        myrtass.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
+                                    else:
+                                        myrtass.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
+            # add routes to tgw in vpc
+            for subtype in resmap['Mappings']['Resources'][vpcname]['SUBNETS']:
+                for each in subtype:
+                    for sub in subtype[each]:
                         index = 0
-                        for rtpropag in routetable['PROPAG']:
-                            if rtpropag == vpcname:
-                                myrtpropag = ec2.CfnTransitGatewayRouteTablePropagation(
-                                    self,
-                                    f"tgwrt-prop-{rtname}-vpc-{vpcname}-{index}",
-                                    transit_gateway_attachment_id=self.gwattch.ref,
-                                    transit_gateway_route_table_id=(f"tgwrt{rtname}")
-                                )
-                                if tgwstack != '':
-                                    myrtpropag.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
-                                else:
-                                    myrtpropag.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
-                    # VPC Association with TGW Route Table
-                    if 'ASSOC' in routetable:
-                        for rtassoc in routetable['ASSOC']:
-                            if rtassoc == vpcname:
-                                myrtass = ec2.CfnTransitGatewayRouteTableAssociation(
-                                    self,
-                                    id=f"tgwrt-ass-{rtname}-vpc-{vpcname}",
-                                    transit_gateway_attachment_id=self.gwattch.ref,
-                                    transit_gateway_route_table_id=(f"tgwrt{rtname}")
-                                )
-                                if tgwstack != '':
-                                    myrtass.add_property_override("TransitGatewayRouteTableId", { "Fn::ImportValue" : f"{tgwstack.stack_name}:tgwrt{rtname}out" })
-                                else:
-                                    myrtass.add_property_override("TransitGatewayRouteTableId", {"Ref" : f"tgwrt{rtname}"})
-
-                                # add routes to tgw in vpc
-                                for subtype in resmap['Mappings']['Resources'][vpcname]['SUBNETS']:
-                                    for each in subtype:
-                                        for sub in subtype[each]:
-                                            index = 0
-                                            if each == 'PRIVATE':
-                                                subnetlist = self.vpc.private_subnets
-                                            elif each == 'PUBLIC':
-                                                subnetlist = self.vpc.public_subnets
-                                            elif each == 'ISOLATED':
-                                                subnetlist = self.vpc.isolated_subnets
-                                            if 'TGWRT' in sub:
-                                                idx = 0
-                                                for rt in sub['TGWRT']:
-                                                    idx2 = 0
-                                                    for subnet in subnetlist:
-                                                        ec2.CfnRoute(
-                                                            self,
-                                                            id=f"vpc-rt-{each}-{subnet.availability_zone}-{index}-{idx}-{idx2}",
-                                                            route_table_id=subnet.route_table.route_table_id,
-                                                            destination_cidr_block=rt,
-                                                            transit_gateway_id=gw
-                                                        ).add_depends_on(self.gwattch)
-                                                        idx2 = idx2 + 1
-                                                    idx = idx + 1
-                                                index = index + 1
+                        if each == 'PRIVATE':
+                            subnetlist = self.vpc.private_subnets
+                        elif each == 'PUBLIC':
+                            subnetlist = self.vpc.public_subnets
+                        elif each == 'ISOLATED':
+                            subnetlist = self.vpc.isolated_subnets
+                        if 'TGWRT' in sub:
+                            idx = 0
+                            for rt in sub['TGWRT']:
+                                idx2 = 0
+                                for subnet in subnetlist:
+                                    ec2.CfnRoute(
+                                        self,
+                                        id=f"vpc-rt-{each}-{subnet.availability_zone}-{index}-{idx}-{idx2}",
+                                        route_table_id=subnet.route_table.route_table_id,
+                                        destination_cidr_block=rt,
+                                        transit_gateway_id=gw
+                                    ).add_depends_on(self.gwattch)
+                                    idx2 = idx2 + 1
+                                idx = idx + 1
+                            index = index + 1
         if gwtype == 'vgw':
             self.gw = gwid
             # create Virtual private gateway
