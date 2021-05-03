@@ -247,11 +247,4 @@ class internetfw(core.Stack):
                 export_name=f"NetwFwEnd{index}"
             ).override_logical_id(new_logical_id=f"fwendpoint{index}")
             index = index + 1
-            # for sub in self.vpc.select_subnets(availability_zones=core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids))), subnet_group_name='Endpoints').subnets:
-            #     sub.add_route(
-            #         "DefRTtoFW",
-            #         router_id=core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids))),
-            #         router_type=ec2.RouterType.GATEWAY,
-            #         destination_cidr_block='0.0.0.0/0'
-            #     ).override_logical_id(new_logical_id=f"DefRTtoFW{sub.availability_zone}")
 

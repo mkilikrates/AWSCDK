@@ -237,8 +237,41 @@ class MyAppStack(core.Stack):
                     'selector': appLabel
                 }
             }
+            # self.myingress = {
+            #     'apiVersion': 'extensions/v1beta1',
+            #     'kind': 'Ingress',
+            #     'metadata': { 
+            #         'name': f"{construct_id}mysvc",
+            #         'labels': appLabel,
+            #         'annotations': mysvcannot
+            #     },
+            #     'spec': {
+            #         'rules': [
+            #             {
+            #                 'http': {
+            #                     'paths' : [
+            #                         {
+            #                             'path' : '/*',
+            #                             'backend' : {
+            #                                 'serviceName' : "ssl-redirect",
+            #                                 'servicePort' : "use-annotation"
+            #                             },
+            #                         },
+            #                         {
+            #                             'path' : '/*',
+            #                             'backend' : {
+            #                                 'serviceName' : f"{construct_id}-{resname}",
+            #                                 'servicePort' : restgport
+            #                             },
+            #                         }
+            #                     ]
+            #                 }
+            #             }
+            #         ]
+            #     }
+            # }
             self.myingress = {
-                'apiVersion': 'extensions/v1beta1',
+                'apiVersion': 'networking.k8s.io/v1',
                 'kind': 'Ingress',
                 'metadata': { 
                     'name': f"{construct_id}mysvc",
@@ -252,16 +285,26 @@ class MyAppStack(core.Stack):
                                 'paths' : [
                                     {
                                         'path' : '/*',
+                                        'pathType' : 'Prefix',
                                         'backend' : {
-                                            'serviceName' : "ssl-redirect",
-                                            'servicePort' : "use-annotation"
-                                        },
+                                            'service' : {
+                                                'name' : "ssl-redirect",
+                                                'port' : {
+                                                    'name' : "use-annotation"
+                                                }
+                                            }
+                                        }
                                     },
                                     {
                                         'path' : '/*',
+                                        'pathType' : 'Prefix',
                                         'backend' : {
-                                            'serviceName' : f"{construct_id}-{resname}",
-                                            'servicePort' : restgport
+                                            'service' : {
+                                                'name' : f"{construct_id}-{resname}",
+                                                'port' : {
+                                                    'number' : restgport
+                                                }
+                                            }
                                         },
                                     }
                                 ]
@@ -276,6 +319,15 @@ class MyAppStack(core.Stack):
                 f"{construct_id}Manifest",
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc, self.myingress]
+            )
+            #get the ELB name
+            self.svcaddr = eks.KubernetesObjectValue(
+                self,
+                'LoadBalancerAttribute',
+                cluster=self.eksclust,
+                object_type='ingress',
+                object_name=f"{construct_id}mysvc",
+                json_path='.status.loadBalancer.ingress[0].hostname'
             )
         if reselb == 'nlb' or reselb == 'nlb-ip':
             # add annotations to service
@@ -306,18 +358,28 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc]
             )
-        # #show the ELB name
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:ALB DNS",
-        #     value=self.eksclust.get_service_load_balancer_address(f"{construct_id}-{resname}")
-        # )
+            #get the ELB name
+            self.svcaddr = eks.KubernetesObjectValue(
+                self,
+                'LoadBalancerAttribute',
+                cluster=self.eksclust,
+                object_type='service',
+                object_name=f"{construct_id}-{resname}",
+                json_path='.status.loadBalancer.ingress[0].hostname'
+            )
         #show the APP DNS
         core.CfnOutput(
             self,
             f"{construct_id}:APP DNS",
             value=f"{resname}.{appdomain}"
         )
+        # show the ALB DNS
+        core.CfnOutput(
+            self,
+            f"{construct_id}:ALB DNS",
+            value=self.svcaddr.value
+        )
+
 
 
 

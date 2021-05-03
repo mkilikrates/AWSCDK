@@ -123,52 +123,55 @@ class mygw(core.Stack):
                     )
                 ]
             )
-            # create Police for lambda function
-            self.mylambdapolicy = iam.PolicyStatement(
-                actions=[
-                    "ec2:ModifyTransitGatewayVpcAttachment",
-                    "ec2:DescribeTransitGatewayVpcAttachments",
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:DescribeLogGroups",
-                    "logs:DescribeLogStreams",
-                    "logs:PutLogEvents"
-                ],
-                resources=["*"],
-                effect=iam.Effect.ALLOW
-            )
-            self.mylambdarole = iam.Role(
-                self,
-                "LambdaRole",
-                assumed_by=iam.ServicePrincipal(
-                    'lambda.amazonaws.com'
-                ),
-                description=(
-                    'Role for Lambda to manage Transit Gateway Attachment as Custom Resources in CloudFormation'
-                )
-            )
-            self.mylambdarole.add_to_policy(self.mylambdapolicy)
-            # Create Lambda Function
-            self.mylambda = lpython.PythonFunction(
-                self,
-                f"{construct_id}:Lambda",
-                handler="lambda_handler",
-                timeout=core.Duration.seconds(90),
-                runtime=lambda_.Runtime.PYTHON_3_8,
-                description="Lambda to manage Transit Gateway Attachment as Custom Resources in CloudFormation",
-                entry="lambda/ModifyTGWAttach/",
-                role=(self.mylambdarole),
-                log_retention=log.RetentionDays.ONE_WEEK
-            )
-            self.mycustomresource = core.CustomResource(
-                self,
-                f"{construct_id}:ModifyTransitGatewayVpcAttachment",
-                service_token=self.mylambda.function_arn,properties=[
-                    {
-                        "TgwInspectionVpcAttachmentId" : self.gwattch.ref
-                    }
-                ]
-            )
+            if 'APPLMODE' in resmap['Mappings']['Resources'][res]:
+                    for vpc in resmap['Mappings']['Resources'][res]['APPLMODE']:
+                        if vpc == vpcname:
+                            # create Police for lambda function
+                            self.mylambdapolicy = iam.PolicyStatement(
+                                actions=[
+                                    "ec2:ModifyTransitGatewayVpcAttachment",
+                                    "ec2:DescribeTransitGatewayVpcAttachments",
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:DescribeLogGroups",
+                                    "logs:DescribeLogStreams",
+                                    "logs:PutLogEvents"
+                                ],
+                                resources=["*"],
+                                effect=iam.Effect.ALLOW
+                            )
+                            self.mylambdarole = iam.Role(
+                                self,
+                                "LambdaRole",
+                                assumed_by=iam.ServicePrincipal(
+                                    'lambda.amazonaws.com'
+                                ),
+                                description=(
+                                    'Role for Lambda to manage Transit Gateway Attachment as Custom Resources in CloudFormation'
+                                )
+                            )
+                            self.mylambdarole.add_to_policy(self.mylambdapolicy)
+                            # Create Lambda Function
+                            self.mylambda = lpython.PythonFunction(
+                                self,
+                                f"{construct_id}:Lambda",
+                                handler="lambda_handler",
+                                timeout=core.Duration.seconds(90),
+                                runtime=lambda_.Runtime.PYTHON_3_8,
+                                description="Lambda to manage Transit Gateway Attachment as Custom Resources in CloudFormation",
+                                entry="lambda/ModifyTGWAttach/",
+                                role=(self.mylambdarole),
+                                log_retention=log.RetentionDays.ONE_WEEK
+                            )
+                            self.mycustomresource = core.CustomResource(
+                                self,
+                                f"{construct_id}:ModifyTransitGatewayVpcAttachment",
+                                service_token=self.mylambda.function_arn,properties=[
+                                    {
+                                        "TgwInspectionVpcAttachmentId" : self.gwattch.ref
+                                    }
+                                ]
+                            )
             if cross == False:
                 # add tgw route tables
                 if 'RT' in resmap['Mappings']['Resources'][res]:
