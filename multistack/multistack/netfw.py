@@ -32,22 +32,21 @@ class internetfw(core.Stack):
                         netfw.CfnRuleGroup.StatelessRuleProperty(
                             priority=10,
                             rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                actions=["aws:forward_to_sfe"],
+                                actions=["aws:pass"],
                                 match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-                                    destination_ports=[
-                                        netfw.CfnRuleGroup.PortRangeProperty(
-                                            from_port=80,
-                                            to_port=80
-                                        ),
-                                        netfw.CfnRuleGroup.PortRangeProperty(
-                                            from_port=443,
-                                            to_port=443
-                                        )
-                                    ],
                                     destinations=[
                                         netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('0.0.0.0/0')
+                                            address_definition=('10.0.0.0/8')
                                         ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('100.64.0.0/10')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('172.16.0.0/12')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('192.168.0.0/16')
+                                        )
                                         # netfw.CfnRuleGroup.AddressesProperty(
                                         #     addresses=('::/0')
                                         # ),
@@ -56,6 +55,51 @@ class internetfw(core.Stack):
                                         netfw.CfnRuleGroup.AddressProperty(
                                             address_definition=('10.0.0.0/8')
                                         ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('100.64.0.0/10')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('172.16.0.0/12')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('192.168.0.0/16')
+                                        )
+                                        # netfw.CfnRuleGroup.AddressesProperty(
+                                        #     addresses=core.Fn.select(
+                                        #         0,
+                                        #         self.vpc.vpc_ipv6_cidr_blocks
+                                        #     )
+                                        # )
+                                    ]
+                                )
+                            )
+                        ),
+                        netfw.CfnRuleGroup.StatelessRuleProperty(
+                            priority=20,
+                            rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
+                                actions=["aws:forward_to_sfe"],
+                                match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
+                                    destinations=[
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('0.0.0.0/0')
+                                        )
+                                        # netfw.CfnRuleGroup.AddressesProperty(
+                                        #     addresses=('::/0')
+                                        # ),
+                                    ],
+                                    sources=[
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('10.0.0.0/8')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('100.64.0.0/10')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('172.16.0.0/12')
+                                        ),
+                                        netfw.CfnRuleGroup.AddressProperty(
+                                            address_definition=('192.168.0.0/16')
+                                        )
                                         # netfw.CfnRuleGroup.AddressesProperty(
                                         #     addresses=core.Fn.select(
                                         #         0,
@@ -63,20 +107,13 @@ class internetfw(core.Stack):
                                         #     )
                                         # )
                                     ],
-                                    source_ports=[
-                                        netfw.CfnRuleGroup.PortRangeProperty(
-                                            from_port=0,
-                                            to_port=65535
-                                        )
-                                    ],
-                                    protocols=[6,17]
                                 )
                             )
                         ),
                         netfw.CfnRuleGroup.StatelessRuleProperty(
-                            priority=15,
+                            priority=90,
                             rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                actions=["aws:pass"],
+                                actions=["aws:drop"],
                                 match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
                                     destinations=[
                                         netfw.CfnRuleGroup.AddressProperty(
@@ -105,7 +142,28 @@ class internetfw(core.Stack):
             )
         )
         self.netfwstatefulrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
-            rule_variables=None,
+            # rule_variables={
+            #     "IPSets": {
+            #         "HOME_NET": {
+            #             "Definition":[
+            #                 "10.0.0.0/8",
+            #                 "100.64.0.0/10",
+            #                 "172.16.0.0/12",
+            #                 "192.168.0.0/16"
+            #             ]
+            #         }
+            #     }
+            # }
+            # rule_variables=netfw.CfnRuleGroup.RuleVariablesProperty(
+            #     ip_sets=netfw.CfnRuleGroup.IPSetProperty(
+            #         HOME_NET=[
+            #             "10.0.0.0/8",
+            #             "100.64.0.0/10",
+            #             "172.16.0.0/12",
+            #             "192.168.0.0/16"
+            #         ]
+            #     )
+            # ),
             rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
                 rules_source_list=netfw.CfnRuleGroup.RulesSourceListProperty(
                     generated_rules_type='DENYLIST',
