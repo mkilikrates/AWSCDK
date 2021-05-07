@@ -126,7 +126,7 @@ class VpcFrugalStack(core.Stack):
         myvpc = ec2.Vpc(self,
             f"" + region + "-vpc",
             cidr=vcpcidr,
-            max_azs=2,
+            max_azs=3,
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -235,7 +235,7 @@ class VpcFrugalStack(core.Stack):
         )
         # get prefix list from file to allow traffic from the office
         srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']
-        vgasn = int(zonemap['Mappings']['RegionMap'][region]['TGWASN'])
+        vgasn = int(zonemap['Mappings']['RegionMap'][region]['ASN'])
         # create prefix list for RFC1918
         mynet10rfc1918 = ec2.CfnPrefixList.EntryProperty(
             cidr='10.0.0.0/8',
@@ -292,34 +292,68 @@ class VpcFrugalStack(core.Stack):
             source_prefix_list_id=myrfc1918.ref,
             group_id=bastionsg.security_group_id
         )
-        # get data for bastion resource
+        # # get data for bastion resource
+        # res = 'bastion'
+        # resname = resmap['Mappings']['Resources'][res]['NAME']
+        # ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        # mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        # usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+        # usrdata = open(usrdatafile, "r").read()
+        # # create bastion host instance
+        # bastion = ec2.BastionHostLinux(
+        #     self,
+        #     'MybastionLinux',
+        #     vpc=myvpc,
+        #     security_group=bastionsg,
+        #     subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+        #     instance_type=ec2.InstanceType(ressize),
+        #     machine_image=ec2.AmazonLinuxImage(
+        #         user_data=ec2.UserData.custom(usrdata),
+        #         edition=ec2.AmazonLinuxEdition.STANDARD,
+        #         generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+        #     ),
+        #     instance_name=resname + region,
+        # )
+        # # add tags
+        # for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
+        #     for k,v in tagsmap.items():
+        #         core.Tags.of(bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
+        # # add my key
+        # bastion.instance.instance.add_property_override("KeyName", mykey)
+        # get config for resource
         res = 'bastion'
-        resname = resmap['Mappings']['Resources'][res]['NAME']
+        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
-        mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        resclass = resmap['Mappings']['Resources'][res]['CLASS']
+        mykey = resmap['Mappings']['Resources'][res]['KEY']
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+        mincap = resmap['Mappings']['Resources'][res]['min']
+        maxcap = resmap['Mappings']['Resources'][res]['max']
+        desircap = resmap['Mappings']['Resources'][res]['desir']
+        resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         usrdata = open(usrdatafile, "r").read()
-        # create bastion host instance
-        bastion = ec2.BastionHostLinux(
+        # create Auto Scalling Group
+        self.asg = asg.AutoScalingGroup(
             self,
-            'MybastionLinux',
-            vpc=myvpc,
-            security_group=bastionsg,
-            subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-            instance_type=ec2.InstanceType(ressize),
+            f"{construct_id}:MyASG",
+            instance_type=ec2.InstanceType.of(
+                instance_class=ec2.InstanceClass(resclass),
+                instance_size=ec2.InstanceSize(ressize)
+            ),
             machine_image=ec2.AmazonLinuxImage(
                 user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
             ),
-            instance_name=resname + region,
+            vpc=myvpc,
+            security_group=bastionsg,
+            key_name=f"{mykey}{region}",
+            desired_capacity=desircap,
+            min_capacity=mincap,
+            max_capacity=maxcap,
+            group_metrics=[asg.GroupMetrics.all()],
+            vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
         )
-        # add tags
-        for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
-            for k,v in tagsmap.items():
-                core.Tags.of(bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
-        # add my key
-        bastion.instance.instance.add_property_override("KeyName", mykey)
         # create transit gateway
         # https://github.com/aws-samples/aws-cdk-transit-gateway-peering/blob/master/stacks/networks.py
         mytgw = ec2.CfnTransitGateway(

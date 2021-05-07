@@ -130,6 +130,7 @@ dmypy.json
 
 #config files
 *.cfg
+*.yaml
 
 #context file
 cdk.context.json
@@ -144,3 +145,6 @@ __pycache__
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# CDK8s directory
+cdk8s
