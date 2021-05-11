@@ -18,210 +18,216 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class internetfw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, vpcname = str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, vpcname = str, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
         netfwrlgrpcap = 100
+        # get config for resource
+        res = res
+        resname = resmap['Mappings']['Resources'][res]['NAME']
+        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+        if 'INTNTIN' in resmap['Mappings']['Resources'][res]:
+            resincoming = resmap['Mappings']['Resources'][res]['INTNTIN']
+        else:
+            resincoming = ''
+        if 'LOGS' in resmap['Mappings']['Resources'][res]:
+            reslogs = resmap['Mappings']['Resources'][res]['LOGS']
+        else:
+            reslogs = ''
         # create stateless rulegroup
-        self.netfwstatelessrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
-            rule_variables=None,
-            rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
-                stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
-                    stateless_rules=[
-                        netfw.CfnRuleGroup.StatelessRuleProperty(
-                            priority=10,
-                            rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                actions=["aws:pass"],
-                                match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-                                    destinations=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('10.0.0.0/8')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('100.64.0.0/10')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('172.16.0.0/12')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('192.168.0.0/16')
-                                        )
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=('::/0')
-                                        # ),
-                                    ],
-                                    sources=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('10.0.0.0/8')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('100.64.0.0/10')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('172.16.0.0/12')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('192.168.0.0/16')
-                                        )
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=core.Fn.select(
-                                        #         0,
-                                        #         self.vpc.vpc_ipv6_cidr_blocks
-                                        #     )
-                                        # )
-                                    ]
-                                )
-                            )
-                        ),
-                        netfw.CfnRuleGroup.StatelessRuleProperty(
-                            priority=20,
-                            rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                actions=["aws:forward_to_sfe"],
-                                match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-                                    destinations=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('0.0.0.0/0')
-                                        )
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=('::/0')
-                                        # ),
-                                    ],
-                                    sources=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('10.0.0.0/8')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('100.64.0.0/10')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('172.16.0.0/12')
-                                        ),
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('192.168.0.0/16')
-                                        )
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=core.Fn.select(
-                                        #         0,
-                                        #         self.vpc.vpc_ipv6_cidr_blocks
-                                        #     )
-                                        # )
-                                    ],
-                                )
-                            )
-                        ),
-                        netfw.CfnRuleGroup.StatelessRuleProperty(
-                            priority=90,
-                            rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
-                                actions=["aws:drop"],
-                                match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(
-                                    destinations=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('0.0.0.0/0')
-                                        ),
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=('::/0')
-                                        # ),
-                                    ],
-                                    sources=[
-                                        netfw.CfnRuleGroup.AddressProperty(
-                                            address_definition=('0.0.0.0/0')
-                                        ),
-                                        # netfw.CfnRuleGroup.AddressesProperty(
-                                        #     addresses=core.Fn.select(
-                                        #         0,
-                                        #         self.vpc.vpc_ipv6_cidr_blocks
-                                        #     )
-                                        # )
-                                    ]
-                                )
+        if 'STATELESSGRP' in resmap['Mappings']['Resources'][res]:
+            stateless_rule_group_references = []
+            rule_pri = 10
+            for statelessname in resmap['Mappings']['Resources'][res]['STATELESSGRP']:
+                mystatelessrulelst = []
+                for rule in resmap['Mappings']['Resources'][statelessname]['Rules']:
+                    mystatelessruleatt = {}
+                    if 'SRC' in rule:
+                        sources = []
+                        for rulesrc in rule['SRC']:
+                            sources.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(rulesrc)))
+                        mystatelessruleatt['sources'] = sources
+                    if 'SRCPT' in rule:
+                        source_ports = []
+                        for ptfrom, ptto in rule['SRCPT']:
+                            source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=ptfrom, to_port=ptto))
+                        mystatelessruleatt['source_ports'] = source_ports
+                    if 'DST' in rule:
+                        destinations = []
+                        for ruledst in rule['DST']:
+                            destinations.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(ruledst)))
+                        mystatelessruleatt['destinations'] = destinations
+                    if 'DSTPT' in rule:
+                        destination_ports = []
+                        for ptfrom, ptto in rule['DSTPT']:
+                            destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=ptfrom, to_port=ptto))
+                        mystatelessruleatt['destination_ports'] = destination_ports
+                    mystatelessrulelst.append(netfw.CfnRuleGroup.StatelessRuleProperty(
+                        priority= rule['PRI'],
+                        rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
+                            actions=[rule['Actions']],
+                            match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(**mystatelessruleatt)
                             )
                         )
-                    ]
+                    )
+                self.netfwstatelessrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
+                    rule_variables=None,
+                    rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                        stateless_rules_and_custom_actions=netfw.CfnRuleGroup.StatelessRulesAndCustomActionsProperty(
+                            stateless_rules=mystatelessrulelst
+                        )
+                    )
                 )
-            )
-        )
-        self.netfwstatefulrulegrp = netfw.CfnRuleGroup.RuleGroupProperty(
-            # rule_variables={
-            #     "IPSets": {
-            #         "HOME_NET": {
-            #             "Definition":[
-            #                 "10.0.0.0/8",
-            #                 "100.64.0.0/10",
-            #                 "172.16.0.0/12",
-            #                 "192.168.0.0/16"
-            #             ]
-            #         }
-            #     }
-            # }
-            # rule_variables=netfw.CfnRuleGroup.RuleVariablesProperty(
-            #     ip_sets=netfw.CfnRuleGroup.IPSetProperty(
-            #         HOME_NET=[
-            #             "10.0.0.0/8",
-            #             "100.64.0.0/10",
-            #             "172.16.0.0/12",
-            #             "192.168.0.0/16"
-            #         ]
-            #     )
-            # ),
-            rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
-                rules_source_list=netfw.CfnRuleGroup.RulesSourceListProperty(
-                    generated_rules_type='DENYLIST',
-                    targets=[
-                        'www.google.com',
-                        '.google.com'
-                    ],
-                    target_types=[
-                        'HTTP_HOST',
-                        'TLS_SNI'
-                    ]
+                self.netfwrulegrpstateless = netfw.CfnRuleGroup(
+                    self,
+                    f"{construct_id}{statelessname}",
+                    capacity=netfwrlgrpcap,
+                    rule_group_name=f"{construct_id}{statelessname}",
+                    type="STATELESS",
+                    description=f"Stateless Rule Group {statelessname}",
+                    rule_group=self.netfwstatelessrulegrp
                 )
-            )
-        )
-        # create rule group Stateless
-        self.netfwrulegrpstateless = netfw.CfnRuleGroup(
-            self,
-            f"{construct_id}MyNetFWRuleGrpStateless",
-            capacity=netfwrlgrpcap,
-            rule_group_name=(
-                f"{construct_id}MyNetFWRuleGrpStateless"
-            ),
-            type=(
-                "STATELESS"
-            ),
-            description=(
-                "Stateless Rule Group"
-            ),
-            rule_group=self.netfwstatelessrulegrp
-        )
-        core.CfnOutput(
-            self,
-            f"{construct_id}OutNetFwStatelessGrp",
-            value=self.netfwrulegrpstateless.attr_rule_group_arn,
-            export_name=f"{construct_id}-NetFwStatelessGrp"
-        )
-        # create rule group Stateful
-        self.netfwrulegrpstateful = netfw.CfnRuleGroup(
-            self,
-            f"{construct_id}MyNetFWRuleGrpStateful",
-            capacity=netfwrlgrpcap,
-            rule_group_name=(
-                f"{construct_id}MyNetFWRuleGrpStateful"
-            ),
-            type=(
-                "STATEFUL"
-            ),
-            description=(
-                "Stateful Rule Group"
-            ),
-            rule_group=self.netfwstatefulrulegrp
-        )
-        core.CfnOutput(
-            self,
-            f"{construct_id}OutNetFwStatefulGrp",
-            value=self.netfwrulegrpstateful.attr_rule_group_arn,
-            export_name=f"{construct_id}-NetFwStatefulGrp"
-        )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}Out{statelessname}",
+                    value=self.netfwrulegrpstateless.attr_rule_group_arn,
+                    export_name=f"{construct_id}-{statelessname}"
+                )
+                stateless_rule_group_references.append(netfw.CfnFirewallPolicy.StatelessRuleGroupReferenceProperty(priority=rule_pri, resource_arn=self.netfwrulegrpstateless.attr_rule_group_arn))
+                rule_pri = rule_pri + 10
+        # create stateful rulegroup
+        if 'STATEFULGRP' in resmap['Mappings']['Resources'][res]:
+            stateful_rule_group_references = []
+            for statefulname in resmap['Mappings']['Resources'][res]['STATEFULGRP']:
+                if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
+                    mystatefulipset = {}
+                    for ipset in resmap['Mappings']['Resources'][statefulname]['IPSET']:
+                        ipsetvar = ipset['VARIABLE']
+                        definition = ipset['DEFINITION']
+                        mystatefulipset[ipsetvar] = {"Definition" : definition}
+                    # myrulevariable = netfw.CfnRuleGroup.IPSetProperty(ipsetvar, definition=definition)
+                    myrulevariable = netfw.CfnRuleGroup.RuleVariablesProperty(ip_sets=mystatefulipset)
+                else:
+                    myrulevariable = None
+                # until fix
+                myrulevariable = {}
+                if 'DOMAINALLOW' in resmap['Mappings']['Resources'][statefulname]:
+                    resdomainallow = resmap['Mappings']['Resources'][statefulname]['DOMAINALLOW']
+                else:
+                    resdomainallow = ''
+                if 'DOMAINDENY' in resmap['Mappings']['Resources'][statefulname]:
+                    resdomaindeny = resmap['Mappings']['Resources'][statefulname]['DOMAINDENY']
+                else:
+                    resdomaindeny = ''
+                if resdomaindeny != '':
+                    self.netfwstatefulrulegrpdomain = netfw.CfnRuleGroup.RuleGroupProperty(
+                        rule_variables=myrulevariable,
+                        rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                            rules_source_list=netfw.CfnRuleGroup.RulesSourceListProperty(
+                                generated_rules_type='DENYLIST',
+                                targets=resdomaindeny,
+                                target_types=[
+                                    'HTTP_HOST',
+                                    'TLS_SNI'
+                                ]
+                            )
+                        )
+                    )
+                    self.netfwrulegrpstatefuldomain = netfw.CfnRuleGroup(
+                        self,
+                        f"{construct_id}MyNetFWRuleGrpStatefulDomainDeny",
+                        capacity=netfwrlgrpcap,
+                        rule_group_name=f"{construct_id}MyNetFWRuleGrpStatefulDomainDeny",
+                        type="STATEFUL",
+                        description="Stateful Rule Group Domain Deny",
+                        rule_group=self.netfwstatefulrulegrpdomain
+                    )
+                    # add rule group to police
+                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn))
+                    if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
+                        self.netfwrulegrpstatefuldomain.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
+
+                    core.CfnOutput(
+                        self,
+                        f"{construct_id}OutNetFwStatefulGrpDomainDeny",
+                        value=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
+                        export_name=f"{construct_id}-NetFwStatefulGrpDomainDeny"
+                    )
+                elif resdomainallow != '':
+                    self.netfwstatefulrulegrpdomain = netfw.CfnRuleGroup.RuleGroupProperty(
+                        rule_variables=myrulevariable,
+                        rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                            rules_source_list=netfw.CfnRuleGroup.RulesSourceListProperty(
+                                generated_rules_type='ALLOWLIST',
+                                targets=resdomaindeny,
+                                target_types=[
+                                    'HTTP_HOST',
+                                    'TLS_SNI'
+                                ]
+                            )
+                        )
+                    )
+                    self.netfwrulegrpstatefuldomain = netfw.CfnRuleGroup(
+                        self,
+                        f"{construct_id}MyNetFWRuleGrpStatefulDomainAllow",
+                        capacity=netfwrlgrpcap,
+                        rule_group_name=f"{construct_id}MyNetFWRuleGrpStatefulDomainAllow",
+                        type="STATEFUL",
+                        description="Stateful Rule Group Domain Allow",
+                        rule_group=self.netfwstatefulrulegrpdomain
+                    )
+                    core.CfnOutput(
+                        self,
+                        f"{construct_id}OutNetFwStatefulGrpDomainAllow",
+                        value=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
+                        export_name=f"{construct_id}-NetFwStatefulGrpDomainAlow"
+                    )
+                    # add rule group to police
+                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn))
+                if 'Rules' in resmap['Mappings']['Resources'][statefulname]:
+                    mystatefulrulelst = []
+                    ruleindex = 1
+                    for rule in resmap['Mappings']['Resources'][statefulname]['Rules']:
+                        mystatefulrulelst.append(netfw.CfnRuleGroup.StatefulRuleProperty(
+                            action=rule['Actions'],
+                            header=netfw.CfnRuleGroup.HeaderProperty(
+                                destination=rule['DST'],
+                                destination_port=rule['DSTPT'],
+                                direction=rule['DIR'],
+                                protocol=rule['PROTO'],
+                                source=rule['SRC'],
+                                source_port=rule['SRCPT']
+                            ),
+                            rule_options=[netfw.CfnRuleGroup.RuleOptionProperty(
+                                keyword=f"sid:{ruleindex}"
+                            )]
+                        ))
+                        ruleindex = ruleindex + 1
+                    self.netfwstatefulrulegrphd = netfw.CfnRuleGroup.RuleGroupProperty(
+                        rule_variables=None,
+                        rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                            stateful_rules=mystatefulrulelst
+                        )
+                    )
+                    self.netfwrulegrpstatefulhd = netfw.CfnRuleGroup(
+                        self,
+                        f"{construct_id}MyNetFWRuleGrpStatefulHeader",
+                        capacity=netfwrlgrpcap,
+                        rule_group_name=f"{construct_id}MyNetFWRuleGrpStatefulHeader",
+                        type="STATEFUL",
+                        description="Stateful Rule Group Header Rules",
+                        rule_group=self.netfwstatefulrulegrphd
+                    )
+                    core.CfnOutput(
+                        self,
+                        f"{construct_id}OutNetFwStatefulGrpHeader",
+                        value=self.netfwrulegrpstatefulhd.attr_rule_group_arn,
+                        export_name=f"{construct_id}-NetFwStatefulGrpHeader"
+                    )
+                    # add rule group to police
+                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn))
+
         # create a lambda to deal with NetFW Endpoint routes
         # create Police for lambda function
         self.mylambdapolicy = iam.PolicyStatement(
@@ -268,22 +274,12 @@ class internetfw(core.Stack):
 			firewall_policy=netfw.CfnFirewallPolicy.FirewallPolicyProperty(
                 stateless_default_actions=["aws:forward_to_sfe"], 
                 stateless_fragment_default_actions=["aws:forward_to_sfe"],
-                stateless_rule_group_references=[
-                    netfw.CfnFirewallPolicy.StatelessRuleGroupReferenceProperty(
-                        priority=10,
-                        resource_arn=self.netfwrulegrpstateless.attr_rule_group_arn
-                    )
-                ],
-                stateful_rule_group_references=[
-                    netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
-                        resource_arn=self.netfwrulegrpstateful.attr_rule_group_arn
-                    )
-                ]
+                stateless_rule_group_references=stateless_rule_group_references,
+                stateful_rule_group_references=stateful_rule_group_references
             )
         )
         self.netfwspolicy.add_property_override('FirewallPolicy.StatelessDefaultActions', ["aws:forward_to_sfe"])
         self.netfwspolicy.add_property_override('FirewallPolicy.StatelessFragmentDefaultActions', ["aws:forward_to_sfe"])
-
         core.CfnOutput(
             self,
             f"{construct_id}OutNetworkFirewallPolicy",
@@ -294,13 +290,13 @@ class internetfw(core.Stack):
         self.netfirewall = netfw.CfnFirewall(
             self,
             f"{construct_id}MyNetFW",
-            firewall_name=f"{construct_id}MyNetFW",
+            firewall_name=resname,
             firewall_policy_arn=self.netfwspolicy.attr_firewall_policy_arn,
             subnet_mappings=[
                 netfw.CfnFirewall.SubnetMappingProperty(
                     subnet_id = subnet_id
                 ) for subnet_id in self.vpc.select_subnets(
-                    subnet_group_name='InternetOut'
+                    subnet_group_name=ressubgrp
                 ).subnet_ids
             ],
             vpc_id=self.vpc.vpc_id,
@@ -309,6 +305,30 @@ class internetfw(core.Stack):
             firewall_policy_change_protection=False,
             subnet_change_protection=False,
         )
+        # enable logs
+        if reslogs != '':
+            mylogdstcfg = []
+            for logcfg in reslogs:
+                if 'logGroup' in logcfg['LogDestination']:
+                    netfwloggroup = log.LogGroup(
+                        self,
+                        logcfg['LogDestination']['logGroup'],
+                        retention=log.RetentionDays.ONE_WEEK
+                    )
+                mylogdstcfg.append(netfw.CfnLoggingConfiguration.LogDestinationConfigProperty(
+                    log_destination={"logGroup": netfwloggroup.log_group_name},
+                    log_destination_type="CloudWatchLogs",
+                    log_type=logcfg['LogType']
+                ))
+            netfw.CfnLoggingConfiguration(
+                self,
+                f"{construct_id}MyNetFWLogs",
+                firewall_arn=self.netfirewall.attr_firewall_arn,
+                logging_configuration=netfw.CfnLoggingConfiguration.LoggingConfigurationProperty(
+                    log_destination_configs=mylogdstcfg,
+                ),
+                firewall_name=resname
+            )
         core.CfnOutput(
             self,
             f"{construct_id}OutNetworkFirewallId",
@@ -321,19 +341,20 @@ class internetfw(core.Stack):
             value=self.netfirewall.attr_firewall_arn,
             export_name=f"{construct_id}-NetworkFirewallArn"
         )
-        # # create route table for incoming traffic
-        # self.incomingrt = ec2.CfnRouteTable(
-        #     self,
-        #     f"{construct_id}IncomeRouteTable",
-        #     vpc_id=self.vpc.vpc_id
-        # )
-        # # edge association
-        # ec2.CfnGatewayRouteTableAssociation(
-        #     self,
-        #     f"{construct_id}IncomeRouteTableAssociation",
-        #     gateway_id=self.vpc.internet_gateway_id,
-        #     route_table_id=self.incomingrt.ref
-        # )
+        if resincoming == True:
+            # create route table for incoming traffic
+            self.incomingrt = ec2.CfnRouteTable(
+                self,
+                f"{construct_id}IncomeRouteTable",
+                vpc_id=self.vpc.vpc_id
+            )
+            # edge association
+            ec2.CfnGatewayRouteTableAssociation(
+                self,
+                f"{construct_id}IncomeRouteTableAssociation",
+                gateway_id=self.vpc.internet_gateway_id,
+                route_table_id=self.incomingrt.ref
+            )
 
         endpointlist = self.netfirewall.attr_endpoint_ids
         index = 0
@@ -374,5 +395,13 @@ class internetfw(core.Stack):
                                     destination_cidr_block=rt
                                 )
                                 idx = idx + 1
+                            if 'NETFWINC' in sub and resincoming == True:
+                                ec2.CfnRoute(
+                                    self,
+                                    f"IncomingToVPCEnd{index}{each}-{subname}",
+                                    route_table_id=self.incomingrt.ref,
+                                    vpc_endpoint_id=fwendpoint_id,
+                                    destination_cidr_block=self.mycustomresource.get_att_string("CidrBlock")
+                                )
             index = index + 1
 

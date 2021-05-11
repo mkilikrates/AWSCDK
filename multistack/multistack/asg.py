@@ -42,6 +42,10 @@ class main(core.Stack):
         resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
         usrdata = open(usrdatafile, "r").read()
+        if 'INTERNET' in resmap['Mappings']['Resources'][res]:
+            reseip = resmap['Mappings']['Resources'][res]['INTERNET']
+        else:
+            reseip = False
         # create security group for Auto Scale Group
         self.asgsg = ec2.SecurityGroup(
             self,
@@ -128,7 +132,8 @@ class main(core.Stack):
                 max_capacity=maxcap,
                 group_metrics=[asg.GroupMetrics.all()],
                 vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                role=resrole
+                role=resrole,
+                associate_public_ip_address=reseip
             )
         else:
             self.asg = asg.AutoScalingGroup(
@@ -151,6 +156,7 @@ class main(core.Stack):
                 max_capacity=maxcap,
                 group_metrics=[asg.GroupMetrics.all()],
                 vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                associate_public_ip_address=reseip
             )
         if resmon == True:
             cw.CfnAlarm(

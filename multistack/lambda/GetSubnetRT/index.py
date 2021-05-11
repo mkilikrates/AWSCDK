@@ -53,6 +53,7 @@ def lambda_handler(event, context):
                 ]
             )
             subnetid = action['Subnets'][0]['SubnetId']
+            subnetcidr = action['Subnets'][0]['CidrBlock']
             action = client_ec2.describe_route_tables(
                 Filters=[
                     {
@@ -67,7 +68,7 @@ def lambda_handler(event, context):
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Route Table Id found!")
             response["PhysicalResourceId"] = phyresId
-            response["Data"] = { "SubnetId" : subnetid, "RouteTableId" : rtid }
+            response["Data"] = { "SubnetId" : subnetid, "CidrBlock" : subnetcidr, "RouteTableId" : rtid }
             logger.info('Action: Nothing to do here! - {}'.format(event['RequestType']))
         elif event['RequestType'] == 'Create':
             action = client_ec2.describe_subnets(
@@ -93,6 +94,7 @@ def lambda_handler(event, context):
                 ]
             )
             subnetid = action['Subnets'][0]['SubnetId']
+            subnetcidr = action['Subnets'][0]['CidrBlock']
             action = client_ec2.describe_route_tables(
                 Filters=[
                     {
@@ -107,7 +109,7 @@ def lambda_handler(event, context):
             response["Status"] = "SUCCESS"
             response["PhysicalResourceId"] = rtid
             response["Reason"] = ("Route Table Id found!")
-            response["Data"] = { "SubnetId" : subnetid, "RouteTableId" : rtid }
+            response["Data"] = { "SubnetId" : subnetid, "CidrBlock" : subnetcidr, "RouteTableId" : rtid }
         else:
             phyresId = event['PhysicalResourceId']
             action = client_ec2.describe_subnets(
@@ -133,6 +135,7 @@ def lambda_handler(event, context):
                 ]
             )
             subnetid = action['Subnets'][0]['SubnetId']
+            subnetcidr = action['Subnets'][0]['CidrBlock']
             action = client_ec2.describe_route_tables(
                 Filters=[
                     {
@@ -147,7 +150,7 @@ def lambda_handler(event, context):
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Route Table Id found!")
             response["PhysicalResourceId"] = phyresId
-            response["Data"] = { "SubnetId" : subnetid, "RouteTableId" : rtid }
+            response["Data"] = { "SubnetId" : subnetid, "CidrBlock" : subnetcidr, "RouteTableId" : rtid }
     except Exception as e:
         response = {}
         logger.error('ERROR: {}'.format(e))

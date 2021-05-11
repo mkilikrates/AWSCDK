@@ -83,9 +83,14 @@ class BastionStack(core.Stack):
 
         # get data for bastion resource
         resname = resmap['Mappings']['Resources'][res]['NAME']
+        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
         resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
+        if 'INTERNET' in resmap['Mappings']['Resources'][res]:
+            reseip = resmap['Mappings']['Resources'][res]['INTERNET']
+        else:
+            reseip = False
         mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
         usrdata = open(usrdatafile, "r").read()
@@ -95,7 +100,7 @@ class BastionStack(core.Stack):
             f"{construct_id}",
             vpc=self.vpc,
             security_group=self.bastionsg,
-            subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            subnet_selection=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
             instance_type=ec2.InstanceType.of(
                 instance_class=ec2.InstanceClass(resclass),
                 instance_size=ec2.InstanceSize(ressize)
@@ -117,6 +122,17 @@ class BastionStack(core.Stack):
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
             self.bastion.instance.role.add_managed_policy(manpol)
+        # allocate elastic ip
+        if reseip == True:
+            ec2.CfnEIP(
+                self,
+                f"{self}BastionEip",
+                domain='vpc',
+                instance_id=self.bastion.instance_id,
+            )
+        #     netint = []
+        #     netint.append({"AssociatePublicIpAddress": "true", "DeviceIndex": "0"})
+        #     self.bastion.instance.instance.add_property_override("NetworkInterfaces", netint)
         # output
         core.CfnOutput(
             self,
