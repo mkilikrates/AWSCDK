@@ -87,6 +87,37 @@ class BastionStack(core.Stack):
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
         resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
+        if 'VOLUMES' in resmap['Mappings']['Resources'][res]:
+            myblkdev = []
+            for vol in resmap['Mappings']['Resources'][res]['VOLUMES']:
+                resvolname = vol['NAME']
+                resvolsize = vol['SIZE']
+                resvolcrypt = vol['CRYPT']
+                if vol['TYPE'] == 'GP2':
+                    resvoltype = ec2.EbsDeviceVolumeType.GP2
+                elif vol['TYPE'] == 'GP3':
+                    resvoltype = ec2.EbsDeviceVolumeType.GP3
+                elif vol['TYPE'] == 'IO1':
+                    resvoltype = ec2.EbsDeviceVolumeType.IO1
+                elif vol['TYPE'] == 'IO2':
+                    resvoltype = ec2.EbsDeviceVolumeType.IO2
+                elif vol['TYPE'] == 'SC1':
+                    resvoltype = ec2.EbsDeviceVolumeType.SC1
+                elif vol['TYPE'] == 'ST1':
+                    resvoltype = ec2.EbsDeviceVolumeType.ST1
+                elif vol['TYPE'] == 'STANDARD':
+                    resvoltype = ec2.EbsDeviceVolumeType.STANDARD
+                myblkdev.append(ec2.BlockDevice(
+                    device_name="/dev/xvda",
+                    volume=ec2.BlockDeviceVolume.ebs(
+                        volume_type=resvoltype,
+                        volume_size=resvolsize,
+                        encrypted=resvolcrypt,
+                        delete_on_termination=True
+                    )
+                ))
+        else:
+            myblkdev = None
         if 'INTERNET' in resmap['Mappings']['Resources'][res]:
             reseip = resmap['Mappings']['Resources'][res]['INTERNET']
         else:
@@ -110,6 +141,7 @@ class BastionStack(core.Stack):
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             ),
+            block_devices=myblkdev,
             instance_name=f"{resname}-{region}",
         )
         # add tags

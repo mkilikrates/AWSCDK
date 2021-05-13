@@ -42,6 +42,37 @@ class main(core.Stack):
         resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
         usrdata = open(usrdatafile, "r").read()
+        if 'VOLUMES' in resmap['Mappings']['Resources'][res]:
+            myblkdev = []
+            for vol in resmap['Mappings']['Resources'][res]['VOLUMES']:
+                resvolname = vol['NAME']
+                resvolsize = vol['SIZE']
+                resvolcrypt = vol['CRYPT']
+                if vol['TYPE'] == 'GP2':
+                    resvoltype = asg.EbsDeviceVolumeType.GP2
+                elif vol['TYPE'] == 'GP3':
+                    resvoltype = asg.EbsDeviceVolumeType.GP3
+                elif vol['TYPE'] == 'IO1':
+                    resvoltype = asg.EbsDeviceVolumeType.IO1
+                elif vol['TYPE'] == 'IO2':
+                    resvoltype = asg.EbsDeviceVolumeType.IO2
+                elif vol['TYPE'] == 'SC1':
+                    resvoltype = asg.EbsDeviceVolumeType.SC1
+                elif vol['TYPE'] == 'ST1':
+                    resvoltype = asg.EbsDeviceVolumeType.ST1
+                elif vol['TYPE'] == 'STANDARD':
+                    resvoltype = asg.EbsDeviceVolumeType.STANDARD
+                myblkdev.append(asg.BlockDevice(
+                    device_name="/dev/xvda",
+                    volume=asg.BlockDeviceVolume.ebs(
+                        volume_type=resvoltype,
+                        volume_size=resvolsize,
+                        encrypted=resvolcrypt,
+                        delete_on_termination=True
+                    )
+                ))
+        else:
+            myblkdev = None
         if 'INTERNET' in resmap['Mappings']['Resources'][res]:
             reseip = resmap['Mappings']['Resources'][res]['INTERNET']
         else:
@@ -124,6 +155,7 @@ class main(core.Stack):
                     edition=ec2.AmazonLinuxEdition.STANDARD,
                     generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
                 ),
+                block_devices=myblkdev,
                 vpc=self.vpc,
                 security_group=self.asgsg,
                 key_name=f"{mykey}{region}",
@@ -148,6 +180,7 @@ class main(core.Stack):
                     edition=ec2.AmazonLinuxEdition.STANDARD,
                     generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
                 ),
+                block_devices=myblkdev,
                 vpc=self.vpc,
                 security_group=self.asgsg,
                 key_name=f"{mykey}{region}",
