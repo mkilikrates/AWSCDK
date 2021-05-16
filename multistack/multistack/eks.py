@@ -240,7 +240,7 @@ class EksStack(core.Stack):
             myrole = iam.Role.from_role_arn(
                 self,
                 f"{construct_id}AddResourceRole",
-                f"arn:{core.Aws.PARTITION}:iam:{account}:role/{resrole}"
+                f"arn:{core.Aws.PARTITION}:iam::{account}:role/{resrole}"
             )
             self.eksclust.aws_auth.add_masters_role(myrole)
         if role != '':
