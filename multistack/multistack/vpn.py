@@ -29,6 +29,7 @@ class cvpn(core.Stack):
         appname = resmap['Mappings']['Resources'][res]['NAME']
         appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
         cvpncidr = resmap['Mappings']['Resources'][res]['CIDR']
+        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         # get hosted zone id
         self.hz = r53.HostedZone.from_lookup(
             self,
@@ -99,12 +100,12 @@ class cvpn(core.Stack):
             vpc_id=self.vpc.vpc_id,
         )
         # Network Target 
-        for i, subnet in enumerate(self.vpc.isolated_subnets):
+        for i, subnet in enumerate(self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids):
             ec2.CfnClientVpnTargetNetworkAssociation(
                 self,
                 f"{construct_id}:cvpn-association-{i}",
                 client_vpn_endpoint_id=self.cvpn.ref,
-                subnet_id=subnet.subnet_id
+                subnet_id=subnet
             )
             # add Routes
             ec2.CfnClientVpnRoute(
@@ -112,7 +113,7 @@ class cvpn(core.Stack):
                 f"{construct_id}:cvpn-route-{i}",
                 client_vpn_endpoint_id=self.cvpn.ref,
                 destination_cidr_block="0.0.0.0/0",
-                target_vpc_subnet_id=subnet.subnet_id
+                target_vpc_subnet_id=subnet
             )
         # Authotization Rule
         ec2.CfnClientVpnAuthorizationRule(
