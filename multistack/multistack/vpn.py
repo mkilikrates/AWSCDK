@@ -101,7 +101,7 @@ class cvpn(core.Stack):
         )
         # Network Target 
         for i, subnet in enumerate(self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids):
-            ec2.CfnClientVpnTargetNetworkAssociation(
+            myassociation = ec2.CfnClientVpnTargetNetworkAssociation(
                 self,
                 f"{construct_id}:cvpn-association-{i}",
                 client_vpn_endpoint_id=self.cvpn.ref,
@@ -114,7 +114,8 @@ class cvpn(core.Stack):
                 client_vpn_endpoint_id=self.cvpn.ref,
                 destination_cidr_block="0.0.0.0/0",
                 target_vpc_subnet_id=subnet
-            )
+            ).add_depends_on(myassociation)
+            myassociation.override_logical_id(f"association{i}")
         # Authotization Rule
         ec2.CfnClientVpnAuthorizationRule(
             self,
@@ -384,6 +385,3 @@ class s2svpn(core.Stack):
                     value=self.mycustomvpn.get_att_string("VPNid"),
                     export_name=f"{construct_id}:VPNid"
                 )
-
-
-

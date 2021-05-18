@@ -50,6 +50,6 @@ EKStack = eks(app, "myeks", env=myenv, res = 'myekspubec2', preflst = True, allo
 EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust)
 EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
 EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbfe', preflst = False, allowsg = '', allowall = 80, ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
-#ECStack = ecs(app, "myecs", env=myenv, res = 'myecsAsgpriv', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
+ECStack = ecs(app, "myecs", env=myenv, res = 'myecsAsgpriv', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
 ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = False, allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 app.synth()
