@@ -320,15 +320,15 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc, self.myingress]
             )
-            #get the ELB name
-            self.svcaddr = eks.KubernetesObjectValue(
-                self,
-                'LoadBalancerAttribute',
-                cluster=self.eksclust,
-                object_type='ingress',
-                object_name=f"{construct_id}mysvc",
-                json_path='.status.loadBalancer.ingress[0].hostname'
-            )
+            # #get the ELB name
+            # self.svcaddr = eks.KubernetesObjectValue(
+            #     self,
+            #     'LoadBalancerAttribute',
+            #     cluster=self.eksclust,
+            #     object_type='ingress',
+            #     object_name=f"{construct_id}mysvc",
+            #     json_path='.status.loadBalancer.ingress[0].hostname'
+            # )
         if reselb == 'nlb' or reselb == 'nlb-ip':
             # add annotations to service
             self.mysvc = {
@@ -358,27 +358,27 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc]
             )
-            #get the ELB name
-            self.svcaddr = eks.KubernetesObjectValue(
-                self,
-                'LoadBalancerAttribute',
-                cluster=self.eksclust,
-                object_type='service',
-                object_name=f"{construct_id}-{resname}",
-                json_path='.status.loadBalancer.ingress[0].hostname'
-            )
-        #show the APP DNS
-        core.CfnOutput(
-            self,
-            f"{construct_id}:APP DNS",
-            value=f"{resname}.{appdomain}"
-        )
-        # show the ALB DNS
-        core.CfnOutput(
-            self,
-            f"{construct_id}:ALB DNS",
-            value=self.svcaddr.value
-        )
+        #     #get the ELB name
+        #     self.svcaddr = eks.KubernetesObjectValue(
+        #         self,
+        #         'LoadBalancerAttribute',
+        #         cluster=self.eksclust,
+        #         object_type='service',
+        #         object_name=f"{construct_id}-{resname}",
+        #         json_path='.status.loadBalancer.ingress[0].hostname'
+        #     )
+        # #show the APP DNS
+        # core.CfnOutput(
+        #     self,
+        #     f"{construct_id}:APP DNS",
+        #     value=f"{resname}.{appdomain}"
+        # )
+        # # show the ALB DNS
+        # core.CfnOutput(
+        #     self,
+        #     f"{construct_id}:ALB DNS",
+        #     value=self.svcaddr.value
+        # )
 
 
 
