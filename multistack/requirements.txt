@@ -27,6 +27,7 @@ constructs
 cdk8s
 cdk8s_plus
 cdk8s_aws_alb_ingress_controller
+cdk8s_aws_load_balancer_controller
 requests
 cdk8s_external_dns
 -e .
