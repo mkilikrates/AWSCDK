@@ -49,10 +49,10 @@ CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['mutual', 'fed
 #NetFWRouteStack = netfwrt(app, "MYNETFWRT", env=myenv, vpc = VPCStack.vpc, netfw = NetFWStack.netfirewall, netfwnum = NetFWStack.endpointnumber)
 EKStack = eks(app, "myeks", env=myenv, res = 'myekspubec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ipstack = ipstack, role = '', vpc = VPCStack.vpc)
 EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust).add_dependency(target=EKStack)
-EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust).add_dependency(target=EKStack)
-#EKSINGStack = eksing(app, "aws-ingress-controller", env=myenv, ekscluster = EKStack.eksclust).add_dependency(target=EKStack)
+#EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust).add_dependency(target=EKStack)
+EKSINGStack = eksing(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust).add_dependency(target=EKStack)
 ## use one or other 
-EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbfe', preflst = False, allowsg = '', allowall = 80, ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
+EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksnlbfe', preflst = False, allowsg = '', allowall = 80, ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
 #ECStack = ecs(app, "myecs", env=myenv, res = 'myecsAsgpriv', preflst = False, allowsg = BationStack.bastionsg, allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
 #ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = False, allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 app.synth()

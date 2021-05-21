@@ -80,16 +80,6 @@ class extdnspol(cdk8s.Chart):
         self.svcaccount = svcaccount
         AwsExternalDnsPolicyHelper.add_policy(self.svcaccount)
 
-class Albpol(cdk8s.Chart):
-    def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
-        # get imported objects
-        self.svcaccount = svcaccount
-        AwsLoadBalancePolicy.add_policy(
-            version=VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2,
-            role=self.svcaccount
-        )
-
 class nginxs3(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, res: str, svcaccname: str, svcannot: dict, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)

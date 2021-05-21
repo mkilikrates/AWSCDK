@@ -59,7 +59,7 @@ class eksING(core.Stack):
         mypolstat = json.dumps(mypol.json())
         mynewpol = json.loads(mypolstat)
         for statement in mynewpol['Statement']:
-            self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+            self.ingsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
         # load balancer controller
         self.manifest = MyChart.Ingctrl(
             cdk8s.App(),
