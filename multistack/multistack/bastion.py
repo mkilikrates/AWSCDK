@@ -151,6 +151,10 @@ class BastionStack(core.Stack):
         # add my key
         self.bastion.instance.instance.add_property_override("KeyName", mykey)
         # create instance profile
+        # add SSM permissions to update instance
+        pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
+        self.bastion.instance.role.add_managed_policy(pol)
+        # add managed policy based on resourcemap
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
             self.bastion.instance.role.add_managed_policy(manpol)
@@ -186,3 +190,4 @@ class BastionStack(core.Stack):
         )
         if self.ipstack == 'Ipv6':
             self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)
+

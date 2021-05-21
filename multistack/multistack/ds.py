@@ -58,6 +58,12 @@ class myds(core.Stack):
                 enable_sso=ressso,
                 short_name=resshort
             )
+            self.dsid = core.CfnOutput(
+                self,
+                f"{construct_id}id",
+                value=self.ds.ref,
+                export_name=f"{construct_id}id"
+            )
             if resalias == True:
                 core.CfnOutput(
                     self,

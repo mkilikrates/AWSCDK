@@ -19,7 +19,7 @@ with open(resconf) as resfile:
     resmap = json.load(resfile)
 
 class cvpn(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, auth, res, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, auth, res, dirid = str, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -30,6 +30,18 @@ class cvpn(core.Stack):
         appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
         cvpncidr = resmap['Mappings']['Resources'][res]['CIDR']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
+        if 'DNS' in resmap['Mappings']['Resources'][res]:
+            resdns = resmap['Mappings']['Resources'][res]['DNS']
+        else:
+            resdns = None
+        if 'SPLIT' in resmap['Mappings']['Resources'][res]:
+            ressplit = resmap['Mappings']['Resources'][res]['SPLIT']
+        else:
+            ressplit = False
+        if 'Portal' in resmap['Mappings']['Resources'][res]:
+            resportal = resmap['Mappings']['Resources'][res]['Portal']
+        else:
+            resportal = 'disabled'
         # get hosted zone id
         self.hz = r53.HostedZone.from_lookup(
             self,
@@ -62,10 +74,10 @@ class cvpn(core.Stack):
                 clicerarn = resmap['Mappings']['Resources'][res]['CLICERT']
                 self.authopt.append(
                     {
-                        "type": "certificate-authentication",
                         "mutualAuthentication": {
                             "clientRootCertificateChainArn": clicerarn
-                        }
+                        },
+                        "type": "certificate-authentication",
                     }
                 )
             if authopt == 'federated':
@@ -78,10 +90,20 @@ class cvpn(core.Stack):
                         }
                     }
                 )
+            if authopt == 'active_directory' and dirid !='':
+                self.authopt.append(
+                    {
+                        "type": "directory-service-authentication",
+                        "activeDirectory": {
+                            "directoryId": dirid
+                        }
+                    }
+                )
+
         self.cvpn = ec2.CfnClientVpnEndpoint(
             self,
             f"{construct_id}:cvpn",
-            description='Client VPN Endpoint Mutual Authentication',
+            description='Client VPN Endpoint',
             authentication_options=self.authopt,
             client_cidr_block=cvpncidr,
             connection_log_options=ec2.CfnClientVpnEndpoint.ConnectionLogOptionsProperty(
@@ -91,12 +113,10 @@ class cvpn(core.Stack):
             ),
             server_certificate_arn=self.cert.certificate_arn,
             client_connect_options=None,
-            dns_servers=[
-                '8.8.8.8'
-            ],
+            dns_servers=resdns,
             security_group_ids=[self.vpc.vpc_default_security_group],
-            self_service_portal='enabled',
-            split_tunnel=True,
+            self_service_portal=resportal,
+            split_tunnel=ressplit,
             vpc_id=self.vpc.vpc_id,
         )
         # Network Target 
@@ -108,23 +128,38 @@ class cvpn(core.Stack):
                 subnet_id=subnet
             )
             # add Routes
-            ec2.CfnClientVpnRoute(
-                self,
-                f"{construct_id}:cvpn-route-{i}",
-                client_vpn_endpoint_id=self.cvpn.ref,
-                destination_cidr_block="0.0.0.0/0",
-                target_vpc_subnet_id=subnet
-            ).add_depends_on(myassociation)
-            myassociation.override_logical_id(f"association{i}")
+            if 'Routes' in resmap['Mappings']['Resources'][res]:
+                index = 0 
+                for route in resmap['Mappings']['Resources'][res]['Routes']:
+                    ec2.CfnClientVpnRoute(
+                        self,
+                        f"{construct_id}:cvpn-route-{index}{i}",
+                        client_vpn_endpoint_id=self.cvpn.ref,
+                        destination_cidr_block=route,
+                        target_vpc_subnet_id=subnet
+                    ).add_depends_on(myassociation)
+                    myassociation.override_logical_id(f"association{index}{i}")
+                    index = index + 1
         # Authotization Rule
-        ec2.CfnClientVpnAuthorizationRule(
-            self,
-            f"{construct_id}:cvpn-auth-rule-Allow-All",
-            client_vpn_endpoint_id=self.cvpn.ref,
-            target_network_cidr="0.0.0.0/0",
-            authorize_all_groups=True,
-            description="Allow All"
-        )
+        if 'Authorization' in resmap['Mappings']['Resources'][res]:
+            index = 0 
+            for auth in resmap['Mappings']['Resources'][res]['Authorization']:
+                if 'Group' in auth:
+                    allgroup = False
+                    cvpngroup = auth['Group']
+                else:
+                    allgroup = True
+                    cvpngroup = None
+                for prefix in auth['Prefix']:
+                    ec2.CfnClientVpnAuthorizationRule(
+                        self,
+                        f"{construct_id}:cvpn-auth-rule-Allow-{index}",
+                        client_vpn_endpoint_id=self.cvpn.ref,
+                        target_network_cidr=prefix,
+                        authorize_all_groups=allgroup,
+                        description=f"Allow {prefix}{cvpngroup}"
+                    ).override_logical_id(f"cvpnauthrule{index}")
+                    index = index + 1
 class s2svpn(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, funct, gwtype, gwid, cgwaddr, route, ipfamily, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)

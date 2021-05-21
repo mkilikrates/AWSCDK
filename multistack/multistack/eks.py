@@ -211,6 +211,14 @@ class EksStack(core.Stack):
                             subnet_group_name=ressubgrp,one_per_az=False
                         )
                     )
+                    # add SSM permissions to update instance
+                    pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
+                    self.eksnodeasg.role.add_managed_policy(pol)
+                    self.eksnodeasg.add_user_data(
+                        'yum install -y amazon-ssm-agent\n'
+                        'systemctl enable amazon-ssm-agent\n'
+                        'systemctl start amazon-ssm-agent\n'
+                        )
                     # add rules to node group security group
                     self.eksnodeasg.connections.allow_from(self.lbsg, port_range=ec2.Port(protocol=ec2.Protocol.ALL,string_representation='allow from sg'))
                     if allowsg != '':

@@ -6,9 +6,14 @@ import cdk8s as cdk8s
 # import path
 
 from cdk8s_aws_alb_ingress_controller import (
-    AwsLoadBalancerController, 
-    AwsLoadBalancePolicy, 
-    VersionsLists,
+    AwsLoadBalancerController as ingAwsLoadBalancerController, 
+    AwsLoadBalancePolicy as ingAwsLoadBalancePolicy, 
+    VersionsLists as ingVersionsLists,
+)
+from cdk8s_aws_load_balancer_controller import (
+    AwsLoadBalancerController as albAwsLoadBalancerController, 
+    AwsLoadBalancePolicy as albAwsLoadBalancePolicy, 
+    VersionsLists as albVersionsLists,
 )
 from cdk8s_external_dns import (
     AwsExternalDns, 
@@ -28,17 +33,31 @@ with open(resconf) as resfile:
     resmap = json.load(resfile)
 
 class Albctrl(cdk8s.Chart):
-    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, **kwargs) -> None:
+    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.clustername = clustername
-        AwsLoadBalancerController(
+        albAwsLoadBalancerController(
             self,
             f"{construct_id}-alb",
             cluster_name=self.clustername,
             create_service_account=False,
         )
-        #AwsLoadBalancePolicy.add_policy(VersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2, 'aws-load-balancer-controller')
+        albAwsLoadBalancePolicy.add_policy(albVersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2.value, 'aws-load-balancer-controller')
+
+class Ingctrl(cdk8s.Chart):
+    def __init__(self, scope: constructs.Construct, construct_id: str, clustername: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.clustername = clustername
+        ingAwsLoadBalancerController(
+            self,
+            f"{construct_id}-ing",
+            cluster_name=self.clustername,
+            create_service_account=False,
+        )
+        ingAwsLoadBalancePolicy.add_policy(ingVersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2.value, 'aws-ingress-controller')
+
 class extdns(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
