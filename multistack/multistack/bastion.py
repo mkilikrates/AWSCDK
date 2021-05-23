@@ -1,3 +1,50 @@
+#### How to create a resource information on resourcesmap.cfg for this template
+# {
+#     "bastioncdk": { 
+#         "NAME": "hostname",  ####==> It will be used to create Tag Name associated with this resource. (Mandatory)
+#         "KEY": "mykeyname-", ####==> It will be used as part of key pair to login in the instance. It will be appended with region name like mykey-us-east-1 (Optional)
+#         "MANAGPOL": "AdministratorAccess", ###==> If you want to attach a AWS managed policy (Optional)
+#         "TAGS": [
+#             {
+#                 "Role": "Bastion" ###==> Any tag in this format { "key" : "value"}. (Optional)
+#             }
+#         ],
+#         "SUBNETGRP": "Public", ###==> Subnet Group used on VPC creation. (Mandatory)
+#         "USRFILE": "cdkBastion.cfg", ###==> Any user-data to be passed on first launch. (Optional)
+#         "CLASS": "BURSTABLE3", ###==> Class of Instance. (Mandatory) - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/InstanceClass.html#aws_cdk.aws_ec2.InstanceClass
+#         "SIZE": "MEDIUM", ###==> Instance Size. (Mandatory) - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/InstanceSize.html#aws_cdk.aws_ec2.InstanceSize
+#         "VOLUMES": [ ###==> List of volumes, first root - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/BlockDevice.html#aws_cdk.aws_ec2.BlockDevice
+#             {
+#                 "NAME": "/dev/xvda",
+#                 "SIZE": 100,
+#                 "CRYPT": false,
+#                 "TYPE": "GP2"
+#             }
+#         ],
+#         "min": 0, ###==> Used as minimum size for AutoScale Group
+#         "max": 6, ###==> Used as maximum size for AutoScale Group
+#         "desir": 1, ###==> Used as desirable size for AutoScale Group
+#         "MONITOR": false, ###==> Used on AutoScale Group for increase or decrease Group Size in a given time
+#         "INTERNET": false ###==> Allocate and Associate to Elastic IP
+#     }
+# }
+
+#### How to use a resource information on zonemap.cfg for this template
+# {
+#     "Mappings": {  ###==> Vide Cloudformation Mappings - https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
+#         "RegionMap": {
+#             "eu-north-1": {  ###==> Region name
+#                 "PREFIXLIST": "pl-123abcxyz" ###==> Prefix list created for this region
+#             },
+#             "me-south-1": {
+#                 "PREFIXLIST": "pl-5gas64ds6"
+#             }
+#         }
+#     }
+# }
+
+
+
 import os
 import json
 from aws_cdk import (
@@ -86,7 +133,10 @@ class BastionStack(core.Stack):
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
-        resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
+        if 'MANAGPOL' in resmap['Mappings']['Resources'][res]:
+            resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
+        else:
+            resmanpol = ''
         if 'VOLUMES' in resmap['Mappings']['Resources'][res]:
             myblkdev = []
             for vol in resmap['Mappings']['Resources'][res]['VOLUMES']:
@@ -122,8 +172,14 @@ class BastionStack(core.Stack):
             reseip = resmap['Mappings']['Resources'][res]['INTERNET']
         else:
             reseip = False
-        mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
-        usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+        if 'KEY' in resmap['Mappings']['Resources'][res]:
+            mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        else:
+            mykey = ''
+        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
+            usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+        else:
+            usrdatafile = ''
         usrdata = open(usrdatafile, "r").read()
         # create bastion host instance
         self.bastion = ec2.BastionHostLinux(
@@ -137,7 +193,6 @@ class BastionStack(core.Stack):
                 instance_size=ec2.InstanceSize(ressize)
             ),
             machine_image=ec2.AmazonLinuxImage(
-                user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             ),
@@ -149,7 +204,10 @@ class BastionStack(core.Stack):
             for k,v in tagsmap.items():
                 core.Tags.of(self.bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
         # add my key
-        self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        if mykey != '':
+            self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        if usrdata != '':
+            self.bastion.instance.add_user_data(usrdata)
         # create instance profile
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
