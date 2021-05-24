@@ -13,13 +13,13 @@
 #### How to create a resource information on resourcesmap.cfg for this template
 # {
 #     "vpc": {
-#         "NAME": "protectedvpc", ####==> It will be used to create Tag Name associated with this resource. (Mandatory)
+#         "NAME": "protectedvpc", ####==> It will be used to create Tag Name associated with this resource. (Mandatory) the name will be like <constructname>/<vpcname>
 #         "SUBNETS": [ ###==> List of subnets and attributes of each subnet. Created in AZs according to maxaz. (Optional) PS if not given the cidr will be splited in the number of subnets created.
 #             {
 #                 "PUBLIC": [ ###==> subnet type. (Mandatory) - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/SubnetType.html#aws_cdk.aws_ec2.SubnetType
 #                     {
 #                         "CIDR": 24, ###==> CIDR Notation (Optional) - https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing#:~:text=CIDR%20notation%20is%20a%20compact,bits%20in%20the%20network%20mask.
-#                         "NAME": "DMZ", ###==> It will be used to create Tag Name associated with this resource (Optional). Since it will create in each AZ the name will be like <vpcname><subnetname><Subnet[aznumber]><randomlogicalid>
+#                         "NAME": "DMZ", ###==> It will be used to create Tag Name associated with this resource (Optional). Since it will create in each AZ the name will be like <constructname>/<vpcname>/<subnetname><Subnet[aznumber]>
 #                         "NETFWRT": [  ###==> List of cidrs to be created in route-table for this subnet associated with Network Firewall endpoint in same AZ. (Optional)
 #                             "10.0.0.0/8",
 #                             "100.64.0.0/10"
