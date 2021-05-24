@@ -3,7 +3,7 @@
 # where:
 # BationStack ==> Name of stack, used if you will import values from it in another stack
 # bastion ==> name of this script bastion.py
-# MY-BASTION ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy)
+# MY-BASTION ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). . This is the name of Cloudformation Template in cdk.out dir (MY-BASTION.template.json)
 # env ==> Environment to be used on this script (Account and region)
 # res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
 # preflst ==> boolean to use prefix-list on ingress security group (Allow ALL), see it bellow in zonemap.cfg

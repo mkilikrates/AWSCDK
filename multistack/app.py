@@ -29,7 +29,7 @@ route = 'bgp'
 gwtype = 'tgw'
 ipstack = 'Ipv6'
 app = core.App()
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'netfwsinglevpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpc', vpc = VPCStack.vpc)
 #GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'inspectvpc', bastionsg = '', tgwstack = '', cross = False)
@@ -38,7 +38,7 @@ VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, max
 #GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack, cross = False)
 #ASGStack2 = asg(app, "MY-ASG2", env=myenv, res = 'bastionsimpleiso', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc).add_dependency(GatewayStack2)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'myctEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
-BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gw.ref, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, bastionsg = BationStack2.bastionsg)
 #S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncust', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource)
