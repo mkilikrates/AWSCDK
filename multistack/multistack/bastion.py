@@ -1,3 +1,16 @@
+#### How to call this file inside app.py file and options
+# BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+# where:
+# BationStack ==> Name of stack, used if you will import values from it in another stack
+# bastion ==> name of this script bastion.py
+# MY-BASTION ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy)
+# env ==> Environment to be used on this script (Account and region)
+# res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
+# preflst ==> boolean to use prefix-list on ingress security group (Allow ALL), see it bellow in zonemap.cfg
+# allowsg ==> Security group to be allowed on ingress rules (Allow ALL)
+# ipstack ==> if will be just ipv4 or dualstack (ipv6)
+# vpc ==> vcp-id where will be created security group and launched this instance
+
 #### How to create a resource information on resourcesmap.cfg for this template
 # {
 #     "bastioncdk": { 
