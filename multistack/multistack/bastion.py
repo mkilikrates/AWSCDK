@@ -8,6 +8,7 @@
 # res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
 # preflst ==> boolean to use prefix-list on ingress security group (Allow ALL), see it bellow in zonemap.cfg
 # allowsg ==> Security group to be allowed on ingress rules (Allow ALL)
+# allowall ==> If true it will create this ingress rules (Allow ALL) or if port number, like 22 (ssh), it will create this ingress rule (Allow ALL for the given port)
 # ipstack ==> if will be just ipv4 or dualstack (ipv6)
 # vpc ==> vcp-id where will be created security group and launched this instance
 
