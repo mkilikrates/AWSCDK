@@ -160,7 +160,10 @@ class EksStack(core.Stack):
                     version=eksvers,
                     role=self.eksrole,
                     masters_role=self.msteksrole,
-                    output_masters_role_arn=True
+                    output_masters_role_arn=True,
+                    vpc_subnets=[ec2.SubnetSelection(
+                        subnet_group_name=ressubgrp,one_per_az=False
+                    )]
                 )
         else:
             if restype == 'EC2':
@@ -174,7 +177,10 @@ class EksStack(core.Stack):
                     version=eksvers,
                     role=self.eksrole,
                     masters_role=self.msteksrole,
-                    output_masters_role_arn=True
+                    output_masters_role_arn=True,
+                    vpc_subnets=[ec2.SubnetSelection(
+                        subnet_group_name=ressubgrp,one_per_az=False
+                    )]
                 )
                 if 'NodeGrp' in resmap['Mappings']['Resources'][res]:
                     res = resmap['Mappings']['Resources'][res]['NodeGrp']
