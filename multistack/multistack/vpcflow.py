@@ -1,3 +1,15 @@
+#### How to call this file inside app.py file and options
+# FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, vpc = VPCStack.vpc)
+# where:
+# FlowLogsStack ==> Name of stack, used if you will import values from it in another stack (Mandatory)
+# flowlogs ==> reference to name of this script vpcflow.py on import (Mandatory)
+# MY-VPCFLOW ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). (Mandatory) This is the name of Cloudformation Template in cdk.out dir (MY-VPCFLOW.template.json)
+# vpcid ==> VPC-ID that where flow logs will be created (Mandatory)
+# Since this templates are used to tests, there is a fixed retention policy for logs set to 1 week.
+# the log format is custom using these fields (${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status})
+# if you want to query using cloudwatch insights you must use the following query to import
+# | parse @message /(?<@version>.*)\(?<@account-id>.*)\(?<@vpc-id>.*)\(?<@region>.*)\(?<@az-id>.*)\(?<@sublocation-type>.*)\(?<@sublocation-id>.*)\(?<@subnet-id>.*)\(?<@instance-id>.*)\(?<@interface-id>.*)\(?<@type>.*)\(?<@pkt-src-aws-service>.*)\(?<@srcaddr>.*)\(?<@pkt-dst-aws-service>.*)\(?<@dstaddr>.*)\(?<@srcport>.*)\(?<@dstport>.*)\(?<@pkt-srcaddr>.*)\(?<@pkt-dstaddr>.*)\(?<@flow-direction>.*)\(?<@traffic-path>.*)\(?<@protocol>.*)\(?<@bytes>.*)\(?<@packets>.*)\(?<@start>.*)\(?<@end>.*)\(?<@action>.*)\(?<@tcp-flags>.*)\(?<@log-status>.*)/
+
 import os
 import json
 from aws_cdk import (
@@ -9,10 +21,8 @@ from aws_cdk import (
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class flowlogs(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, vpcid = str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        # get imported objects
-        self.vpc = vpc
         # Log Group for Flow Logs
         self.flowloggroup = log.LogGroup(
             self,
@@ -43,13 +53,13 @@ class flowlogs(core.Stack):
         # Create VPC Flow Log for VPC
         ec2.CfnFlowLog(
             self,
-            f"{construct_id}:VpcFlowLogs",
-            resource_id=self.vpc.vpc_id,
+            f"{construct_id}",
+            resource_id=vpcid,
             resource_type='VPC',
             traffic_type='ALL',
             deliver_logs_permission_arn=self.flowlogrole.role_arn,
             log_destination_type='cloud-watch-logs',
             log_group_name=self.flowloggroup.log_group_name,
             max_aggregation_interval=60,
-            log_format=format('${version} ${vpc-id} ${subnet-id} ${instance-id} ${interface-id} ${account-id} ${type} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status}'),
+            log_format=format('${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status}'),
         )
