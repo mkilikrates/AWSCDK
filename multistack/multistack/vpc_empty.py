@@ -140,30 +140,6 @@ class VPC(core.Stack):
             nat_gateways=self.natgw,
             subnet_configuration=self.sub
         )
-        self.vpcname = core.CfnOutput(
-            self,
-            f"vpcName",
-            value=f"{resname}",
-            export_name=f"vpcName"
-        )
-        core.CfnOutput(
-            self,
-            f"vpcId",
-            value=self.vpc.vpc_id,
-            export_name=f"vpcId"
-        )
-        core.CfnOutput(
-            self,
-            f"vpccidr",
-            value=self.vpc.vpc_cidr_block,
-            export_name=f"vpccidr"
-        )
-        core.CfnOutput(
-            self,
-            f"vpcdefaultsg",
-            value=self.vpc.vpc_default_security_group,
-            export_name=f"vpcdefaultsg"
-        )
         if self.ipstack != 'Ipv4':
             # ipv6 on this vpc
             self.ipv6_block = ec2.CfnVPCCidrBlock(self, "Ipv6",
@@ -254,13 +230,4 @@ class VPC(core.Stack):
                 subnet.node.children[0].assign_ipv6_address_on_creation=True
                 subnet.node.add_dependency(self.ipv6_block)
                 i = i + 1
-            core.CfnOutput(
-                self,
-                f"vpccidrv6",
-                value=core.Fn.select(
-                    0,
-                    self.vpc.vpc_ipv6_cidr_blocks
-                ),
-                export_name=f"vpccidrv6",
-            )
 

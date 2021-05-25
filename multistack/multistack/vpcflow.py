@@ -7,8 +7,14 @@
 # vpcid ==> VPC-ID that where flow logs will be created (Mandatory)
 # Since this templates are used to tests, there is a fixed retention policy for logs set to 1 week.
 # the log format is custom using these fields (${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status})
+# see fields available at https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html#flow-logs-fields
 # if you want to query using cloudwatch insights you must use the following query to import
-# | parse @message /(?<@version>.*)\(?<@account-id>.*)\(?<@vpc-id>.*)\(?<@region>.*)\(?<@az-id>.*)\(?<@sublocation-type>.*)\(?<@sublocation-id>.*)\(?<@subnet-id>.*)\(?<@instance-id>.*)\(?<@interface-id>.*)\(?<@type>.*)\(?<@pkt-src-aws-service>.*)\(?<@srcaddr>.*)\(?<@pkt-dst-aws-service>.*)\(?<@dstaddr>.*)\(?<@srcport>.*)\(?<@dstport>.*)\(?<@pkt-srcaddr>.*)\(?<@pkt-dstaddr>.*)\(?<@flow-direction>.*)\(?<@traffic-path>.*)\(?<@protocol>.*)\(?<@bytes>.*)\(?<@packets>.*)\(?<@start>.*)\(?<@end>.*)\(?<@action>.*)\(?<@tcp-flags>.*)\(?<@log-status>.*)/
+# fields @timestamp, @message
+# | parse @message /(?<@version>.*)\ (?<@accountid>.*)\ (?<@vpcid>.*)\ (?<@region>.*)\ (?<@azid>.*)\ (?<@sublocationtype>.*)\ (?<@sublocationid>.*)\ (?<@subnetid>.*)\ (?<@instanceid>.*)\ (?<@interfaceid>.*)\ (?<@type>.*)\ (?<@pktsrcawsservice>.*)\ (?<@srcaddr>.*)\ (?<@pktdstawsservice>.*)\ (?<@dstaddr>.*)\ (?<@srcport>.*)\ (?<@dstport>.*)\ (?<@pktsrcaddr>.*)\ (?<@pktdstaddr>.*)\ (?<@flowdirection>.*)\ (?<@trafficpath>.*)\ (?<@protocol>.*)\ (?<@bytes>.*)\ (?<@packets>.*)\ (?<@start>.*)\ (?<@end>.*)\ (?<@action>.*)\ (?<@tcpflags>.*)\ (?<@logstatus>.*)/
+# | display @version, @accountid, @vpcid, @region, @azid, @sublocationtype, @sublocationid, @subnetid, @instanceid, @interfaceid, @type, @pktsrcawsservice, @srcaddr, @pktdstawsservice, @dstaddr, @srcport, @dstport, @pktsrcaddr, @pktdstaddr, @flowdirection, @trafficpath, @protocol, @bytes, @packets, @start, @end, @action, @tcpflags, @logstatus
+# | sort @timestamp desc
+# | limit 1000
+
 
 import os
 import json
