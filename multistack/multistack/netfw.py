@@ -160,7 +160,7 @@ class internetfw(core.Stack):
                         rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
                             rules_source_list=netfw.CfnRuleGroup.RulesSourceListProperty(
                                 generated_rules_type='ALLOWLIST',
-                                targets=resdomaindeny,
+                                targets=resdomainallow,
                                 target_types=[
                                     'HTTP_HOST',
                                     'TLS_SNI'
@@ -185,6 +185,8 @@ class internetfw(core.Stack):
                     )
                     # add rule group to police
                     stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn))
+                    if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
+                        self.netfwrulegrpstatefuldomain.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
                 if 'Rules' in resmap['Mappings']['Resources'][statefulname]:
                     mystatefulrulelst = []
                     ruleindex = 1
@@ -227,6 +229,8 @@ class internetfw(core.Stack):
                     )
                     # add rule group to police
                     stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn))
+                    if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
+                        self.netfwrulegrpstatefulhd.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
 
         # create a lambda to deal with NetFW Endpoint routes
         # create Police for lambda function
