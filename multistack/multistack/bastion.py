@@ -56,9 +56,6 @@
 #         }
 #     }
 # }
-
-
-
 import os
 import json
 from aws_cdk import (
@@ -66,8 +63,9 @@ from aws_cdk import (
     aws_iam as iam,
     core,
 )
-account = core.Aws.ACCOUNT_ID
-region = core.Aws.REGION
+from cdk_ec2_key_pair import KeyPair
+account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
+region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class BastionStack(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -141,7 +139,16 @@ class BastionStack(core.Stack):
                     ec2.Peer.any_ipv6(),
                     ec2.Port.tcp(allowall)
                 )
-
+        # create a key to use from this bastion
+        if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
+            keyname = resmap['Mappings']['Resources'][res]['CREATEKEY']
+            self.key = KeyPair(
+                self,
+                f"{keyname}",
+                name=f"{construct_id}{keyname}-{region}",
+                description='Key Pair from CDK automation',
+                store_public_key=True
+            )
         # get data for bastion resource
         resname = resmap['Mappings']['Resources'][res]['NAME']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
@@ -220,6 +227,20 @@ class BastionStack(core.Stack):
         # add my key
         if mykey != '':
             self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        # add key on ~.ssh/ for ec2-user
+        if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
+            self.key.grant_read_on_private_key(self.bastion.instance.role)
+            self.bastion.instance.add_user_data(
+                "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'\n"
+                "rm /usr/bin/aws\n"
+                "unzip awscliv2.zip\n"
+                "./aws/install -i /usr/local/aws-cli -b /usr/bin\n"
+                f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem\n"
+                f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem\n"
+                "chown -R ec2-user:ec2-user /home/ec2-user/.ssh\n"
+                "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)\n"
+                f"echo 'alias ec2='ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem' >>~/.bashrc\n"
+            )
         if usrdata != '':
             self.bastion.instance.add_user_data(usrdata)
         # create instance profile
@@ -262,4 +283,5 @@ class BastionStack(core.Stack):
         )
         if self.ipstack == 'Ipv6':
             self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)
+
 
