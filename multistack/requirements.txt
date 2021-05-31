@@ -22,6 +22,7 @@ aws_cdk.aws_secretsmanager
 aws_cdk.aws_eks
 aws_cdk.aws_ecs
 aws_cdk.aws_ecs_patterns
+cdk_ec2_key_pair
 PyYAML
 constructs
 cdk8s
