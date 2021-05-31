@@ -65,6 +65,8 @@ from aws_cdk import (
     core,
 )
 from cdk_ec2_key_pair import KeyPair
+from aws_cdk.aws_s3_assets import Asset
+from zipfile import ZipFile
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class BastionStack(core.Stack):
@@ -198,11 +200,6 @@ class BastionStack(core.Stack):
             mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         else:
             mykey = ''
-        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
-            usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
-            usrdata = open(usrdatafile, "r").read()
-        else:
-            usrdata = ''
         # create bastion host instance
         self.bastion = ec2.BastionHostLinux(
             self,
@@ -243,8 +240,34 @@ class BastionStack(core.Stack):
                 "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)\n"
                 f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
             )
-        if usrdata != '':
-            self.bastion.instance.add_user_data(usrdata)
+        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
+            usrdatalst = []
+            with ZipFile('cdk.out/customscript.zip','w') as zip:
+                for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
+                    filename = usractions['filename']
+                    execution = usractions['execution']
+                    usrdatalst.append(f"{execution} {filename}\n")
+                    zip.write(filename)
+            if os.path.isfile('cdk.out/customscript.zip'):
+                customscript = Asset(
+                    self,
+                    f"customscript",
+                    path='cdk.out/customscript.zip'
+                )
+                core.CfnOutput(self, "S3BucketName", value=customscript.s3_bucket_name)
+                core.CfnOutput(self, "S3ObjectKey", value=customscript.s3_object_key)
+                core.CfnOutput(self, "S3HttpURL", value=customscript.http_url)
+                core.CfnOutput(self, "S3ObjectURL", value=customscript.s3_object_url)
+                customscript.grant_read(self.bastion.instance.role)
+                self.bastion.instance.add_user_data(
+                    "yum install -y unzip",
+                    f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
+                    f"unzip customscript.zip"
+                )
+                usrdata = ''.join(usrdatalst)
+                self.bastion.instance.add_user_data(usrdata)
+        else:
+            usrdata = ''
         # create instance profile
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
