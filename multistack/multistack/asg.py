@@ -1,3 +1,21 @@
+#### How to call this file inside app.py file and options
+# ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxbe', preflst = True, allowall = '', ipstack = ipstack, allowsg = BationStack.bastionsg, vpc = VPCStack.vpc)
+# where:
+# ASGStack ==> Name of stack, used if you will import values from it in another stack
+# asg ==> name of this script asg.py
+# MY-ASG ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). . This is the name of Cloudformation Template in cdk.out dir (MY-BASTION.template.json)
+# env ==> Environment to be used on this script (Account and region)
+# res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
+# preflst ==> boolean to use prefix-list on ingress security group (Allow ALL), see it bellow in zonemap.cfg
+# allowsg ==> Security group to be allowed on ingress rules (Allow ALL)
+# allowall ==> If true it will create this ingress rules (Allow ALL) or if port number, like 22 (ssh), it will create this ingress rule (Allow ALL for the given port)
+# ipstack ==> if will be just ipv4 or dualstack (ipv6)
+# vpc ==> vcp-id where will be created security group and launched this instance
+
+#### How to create a resource information on resourcesmap.cfg for this template  ==>>> VIDE bastion.py
+
+#### How to use a resource information on zonemap.cfg for this template  ==>>> VIDE bastion.py
+
 import os
 import json
 from aws_cdk import (
@@ -34,14 +52,35 @@ class main(core.Stack):
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         ressize = resmap['Mappings']['Resources'][res]['SIZE']
         resclass = resmap['Mappings']['Resources'][res]['CLASS']
-        mykey = resmap['Mappings']['Resources'][res]['KEY']
-        usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
-        mincap = resmap['Mappings']['Resources'][res]['min']
-        maxcap = resmap['Mappings']['Resources'][res]['max']
-        desircap = resmap['Mappings']['Resources'][res]['desir']
-        resmon = resmap['Mappings']['Resources'][res]['MONITOR']
-        resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
-        usrdata = open(usrdatafile, "r").read()
+        if 'KEY' in resmap['Mappings']['Resources'][res]:
+            mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
+        else:
+            mykey = None
+        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
+            usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+            usrdata = open(usrdatafile, "r").read()
+        else:
+            usrdata = ''
+        if 'min' in resmap['Mappings']['Resources'][res]:
+            mincap = resmap['Mappings']['Resources'][res]['min']
+        else:
+            mincap = 1
+        if 'max' in resmap['Mappings']['Resources'][res]:
+            maxcap = resmap['Mappings']['Resources'][res]['max']
+        else:
+            maxcap = 1
+        if 'desir' in resmap['Mappings']['Resources'][res]:
+            desircap = resmap['Mappings']['Resources'][res]['desir']
+        else:
+            desircap = None
+        if 'MONITOR' in resmap['Mappings']['Resources'][res]:
+            resmon = resmap['Mappings']['Resources'][res]['MONITOR']
+        else:
+            resmon = False
+        if 'MANAGPOL' in resmap['Mappings']['Resources'][res]:
+            resmanpol = resmap['Mappings']['Resources'][res]['MANAGPOL']
+        else:
+            resmanpol = ''
         if 'VOLUMES' in resmap['Mappings']['Resources'][res]:
             myblkdev = []
             for vol in resmap['Mappings']['Resources'][res]['VOLUMES']:
@@ -87,7 +126,7 @@ class main(core.Stack):
         # add egress rule
         ec2.CfnSecurityGroupEgress(
             self,
-            f"{construct_id}:ASGEgressAllIpv4",
+            f"{construct_id}:EgressAllIpv4",
             ip_protocol="-1",
             cidr_ip="0.0.0.0/0",
             group_id=self.asgsg.security_group_id
@@ -95,7 +134,7 @@ class main(core.Stack):
         if self.ipstack == 'Ipv6':
             ec2.CfnSecurityGroupEgress(
                 self,
-                f"{construct_id}:ASGEgressAllIpv6",
+                f"{construct_id}:EgressAllIpv6",
                 ip_protocol="-1",
                 cidr_ipv6="::/0",
                 group_id=self.asgsg.security_group_id
@@ -136,7 +175,7 @@ class main(core.Stack):
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
         resrole = iam.Role(
             self,
-            f"{construct_id}ASGRole",
+            f"{construct_id}Role",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
             description=f"Role for Auto Scale Group",
             managed_policies=[pol]
@@ -147,20 +186,19 @@ class main(core.Stack):
         # create Auto Scalling Group
         self.asg = asg.AutoScalingGroup(
             self,
-            f"{construct_id}:MyASG",
+            f"{construct_id}",
             instance_type=ec2.InstanceType.of(
                 instance_class=ec2.InstanceClass(resclass),
                 instance_size=ec2.InstanceSize(ressize)
             ),
             machine_image=ec2.AmazonLinuxImage(
-                user_data=ec2.UserData.custom(usrdata),
                 edition=ec2.AmazonLinuxEdition.STANDARD,
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
             ),
             block_devices=myblkdev,
             vpc=self.vpc,
             security_group=self.asgsg,
-            key_name=f"{mykey}{region}",
+            key_name=mykey,
             desired_capacity=desircap,
             min_capacity=mincap,
             max_capacity=maxcap,
@@ -169,10 +207,25 @@ class main(core.Stack):
             role=resrole,
             associate_public_ip_address=reseip
         )
+        self.asg.add_user_data(
+            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'\n"
+            "rm /usr/bin/aws\n"
+            "unzip awscliv2.zip\n"
+            "./aws/install -i /usr/local/aws-cli -b /usr/bin\n"
+        )
+        if usrdata != '':
+            self.asg.add_user_data(usrdata)
+
+        # add tags
+        if 'TAGS' in resmap['Mappings']['Resources'][res]:
+            for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
+                for k,v in tagsmap.items():
+                    core.Tags.of(self.asg).add(k,v,apply_to_launched_instances=True)
+        
         if resmon == True:
             cw.CfnAlarm(
                 self,
-                f"{construct_id}MyASGAlarm",
+                f"{construct_id}Alarm",
                 comparison_operator=("LessThanOrEqualToThreshold"),
                 evaluation_periods=3,
                 actions_enabled=False,

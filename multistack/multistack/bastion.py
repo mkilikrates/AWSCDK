@@ -35,12 +35,12 @@
 #                 "TYPE": "GP2"
 #             }
 #         ],
-#         "min": 0, ###==> Used as minimum size for AutoScale Group
-#         "max": 6, ###==> Used as maximum size for AutoScale Group
-#         "desir": 1, ###==> Used as desirable size for AutoScale Group
-#         "MONITOR": false, ###==> Used on AutoScale Group for increase or decrease Group Size in a given time
-#         "INTERNET": false, ###==> Allocate and Associate to Elastic IP
-#         "CREATEKEY": "key" ###==> Create new keypair (named as {construct_id}{keyname}-{region})and store content in secret manager then get this content in to bastion at /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem
+#         "min": 0, ###==> Used as minimum size for AutoScale Group. (Optional)
+#         "max": 6, ###==> Used as maximum size for AutoScale Group. (Optional)
+#         "desir": 1, ###==> Used as desirable size for AutoScale Group. (Optional)
+#         "MONITOR": false, ###==> Used on AutoScale Group for increase or decrease Group Size in a given time. (Optional)
+#         "INTERNET": false, ###==> Allocate and Associate to Elastic IP. (Optional)
+#         "CREATEKEY": "key" ###==> Create new keypair (named as {construct_id}{keyname}-{region})and store content in secret manager then get this content in to bastion at /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem . (Optional)
 #     }
 # }
 
@@ -200,9 +200,9 @@ class BastionStack(core.Stack):
             mykey = ''
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+            usrdata = open(usrdatafile, "r").read()
         else:
-            usrdatafile = ''
-        usrdata = open(usrdatafile, "r").read()
+            usrdata = ''
         # create bastion host instance
         self.bastion = ec2.BastionHostLinux(
             self,
@@ -222,9 +222,10 @@ class BastionStack(core.Stack):
             instance_name=f"{resname}-{region}",
         )
         # add tags
-        for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
-            for k,v in tagsmap.items():
-                core.Tags.of(self.bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
+        if 'TAGS' in resmap['Mappings']['Resources'][res]:
+            for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
+                for k,v in tagsmap.items():
+                    core.Tags.of(self.bastion).add(k,v,include_resource_types=["AWS::EC2::Instance"])
         # add my key
         if mykey != '':
             self.bastion.instance.instance.add_property_override("KeyName", mykey)
@@ -240,7 +241,7 @@ class BastionStack(core.Stack):
                 f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem\n"
                 "chown -R ec2-user:ec2-user /home/ec2-user/.ssh\n"
                 "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)\n"
-                f"echo 'alias ec2='ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem' >>~/.bashrc\n"
+                f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
             )
         if usrdata != '':
             self.bastion.instance.add_user_data(usrdata)
