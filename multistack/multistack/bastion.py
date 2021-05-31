@@ -39,7 +39,8 @@
 #         "max": 6, ###==> Used as maximum size for AutoScale Group
 #         "desir": 1, ###==> Used as desirable size for AutoScale Group
 #         "MONITOR": false, ###==> Used on AutoScale Group for increase or decrease Group Size in a given time
-#         "INTERNET": false ###==> Allocate and Associate to Elastic IP
+#         "INTERNET": false, ###==> Allocate and Associate to Elastic IP
+#         "CREATEKEY": "key" ###==> Create new keypair (named as {construct_id}{keyname}-{region})and store content in secret manager then get this content in to bastion at /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem
 #     }
 # }
 
