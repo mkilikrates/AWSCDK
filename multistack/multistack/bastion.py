@@ -24,7 +24,8 @@
 #             }
 #         ],
 #         "SUBNETGRP": "Public", ###==> Subnet Group used on VPC creation. (Mandatory)
-#         "USRFILE": "cdkBastion.cfg", ###==> Any user-data to be passed on first launch. (Optional)
+#         "USRFILE": "cdkBastion.cfg", ###==> Any user-data to be passed on first launch. (Optional) limit to 16k - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
+#               or   [{"filename":"install_xpto.cfg", "execution": "python"}, {"filename":"bastion.cfg", "execution": "bash"}],    ###==> In this case it will upload file list to s3 assets then download and install using the command in execution
 #         "CLASS": "BURSTABLE3", ###==> Class of Instance. (Mandatory) - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/InstanceClass.html#aws_cdk.aws_ec2.InstanceClass
 #         "SIZE": "MEDIUM", ###==> Instance Size. (Mandatory) - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/InstanceSize.html#aws_cdk.aws_ec2.InstanceSize
 #         "VOLUMES": [ ###==> List of volumes, first root - https://docs.aws.amazon.com/cdk/api/latest/python/aws_cdk.aws_ec2/BlockDevice.html#aws_cdk.aws_ec2.BlockDevice
@@ -226,48 +227,58 @@ class BastionStack(core.Stack):
         # add my key
         if mykey != '':
             self.bastion.instance.instance.add_property_override("KeyName", mykey)
+        # update awscli
+        self.bastion.instance.add_user_data(
+            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+            "rm /usr/bin/aws",
+            "unzip awscliv2.zip",
+            "rm awscliv2.zip",
+            "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+        )
         # add key on ~.ssh/ for ec2-user
         if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
             self.key.grant_read_on_private_key(self.bastion.instance.role)
             self.bastion.instance.add_user_data(
-                "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'\n"
-                "rm /usr/bin/aws\n"
-                "unzip awscliv2.zip\n"
-                "./aws/install -i /usr/local/aws-cli -b /usr/bin\n"
-                f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem\n"
-                f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem\n"
-                "chown -R ec2-user:ec2-user /home/ec2-user/.ssh\n"
-                "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)\n"
+                f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
+                f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
+                "chown -R ec2-user:ec2-user /home/ec2-user/.ssh",
+                "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)",
                 f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
             )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
-            usrdatalst = []
-            with ZipFile('cdk.out/customscript.zip','w') as zip:
-                for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
-                    filename = usractions['filename']
-                    execution = usractions['execution']
-                    usrdatalst.append(f"{execution} {filename}\n")
-                    zip.write(filename)
-            if os.path.isfile('cdk.out/customscript.zip'):
-                customscript = Asset(
-                    self,
-                    f"customscript",
-                    path='cdk.out/customscript.zip'
-                )
-                core.CfnOutput(self, "S3BucketName", value=customscript.s3_bucket_name)
-                core.CfnOutput(self, "S3ObjectKey", value=customscript.s3_object_key)
-                core.CfnOutput(self, "S3HttpURL", value=customscript.http_url)
-                core.CfnOutput(self, "S3ObjectURL", value=customscript.s3_object_url)
-                customscript.grant_read(self.bastion.instance.role)
-                self.bastion.instance.add_user_data(
-                    "yum install -y unzip",
-                    f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
-                    f"unzip customscript.zip"
-                )
-                usrdata = ''.join(usrdatalst)
+            userdata = resmap['Mappings']['Resources'][res]['USRFILE']
+            if type(userdata) == str:
+                usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+                usrdata = open(usrdatafile, "r").read()
                 self.bastion.instance.add_user_data(usrdata)
-        else:
-            usrdata = ''
+            elif type(userdata) == list:
+                usrdatalst = []
+                with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
+                    for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
+                        filename = usractions['filename']
+                        execution = usractions['execution']
+                        usrdatalst.append(f"{execution} {filename}\n")
+                        usrdatalst.append(f"rm {filename}\n")
+                        zip.write(filename)
+                if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
+                    customscript = Asset(
+                        self,
+                        f"{construct_id}customscript",
+                        path=f"cdk.out/{construct_id}customscript.zip"
+                    )
+                    # core.CfnOutput(self, "S3BucketName", value=customscript.s3_bucket_name)
+                    # core.CfnOutput(self, "S3ObjectKey", value=customscript.s3_object_key)
+                    # core.CfnOutput(self, "S3HttpURL", value=customscript.http_url)
+                    # core.CfnOutput(self, "S3ObjectURL", value=customscript.s3_object_url)
+                    customscript.grant_read(self.bastion.instance.role)
+                    self.bastion.instance.add_user_data(
+                        "yum install -y unzip",
+                        f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
+                        f"unzip customscript.zip",
+                        f"rm customscript.zip\n"
+                    )
+                    usrdata = ''.join(usrdatalst)
+                    self.bastion.instance.add_user_data(usrdata)
         # create instance profile
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
@@ -278,11 +289,17 @@ class BastionStack(core.Stack):
             self.bastion.instance.role.add_managed_policy(manpol)
         # allocate elastic ip
         if reseip == True:
-            ec2.CfnEIP(
+            self.eip = ec2.CfnEIP(
                 self,
-                f"{self}BastionEip",
+                f"{construct_id}EIP",
                 domain='vpc',
                 instance_id=self.bastion.instance_id,
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}:EIP",
+                value=self.eip.ref,
+                export_name=f"{construct_id}:EIP"
             )
         #     netint = []
         #     netint.append({"AssociatePublicIpAddress": "true", "DeviceIndex": "0"})

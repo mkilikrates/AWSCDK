@@ -25,6 +25,8 @@ from aws_cdk import (
     aws_cloudwatch as cw,
     core,
 )
+from aws_cdk.aws_s3_assets import Asset
+from zipfile import ZipFile
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 resconf = "resourcesmap.cfg"
@@ -56,11 +58,6 @@ class main(core.Stack):
             mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         else:
             mykey = None
-        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
-            usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
-            usrdata = open(usrdatafile, "r").read()
-        else:
-            usrdata = ''
         if 'min' in resmap['Mappings']['Resources'][res]:
             mincap = resmap['Mappings']['Resources'][res]['min']
         else:
@@ -207,15 +204,48 @@ class main(core.Stack):
             role=resrole,
             associate_public_ip_address=reseip
         )
+        # update awscli
         self.asg.add_user_data(
-            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'\n"
-            "rm /usr/bin/aws\n"
-            "unzip awscliv2.zip\n"
-            "./aws/install -i /usr/local/aws-cli -b /usr/bin\n"
+            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+            "rm /usr/bin/aws",
+            "unzip awscliv2.zip",
+            "rm awscliv2.zip",
+            "./aws/install -i /usr/local/aws-cli -b /usr/bin",
         )
-        if usrdata != '':
-            self.asg.add_user_data(usrdata)
-
+        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
+            userdata = resmap['Mappings']['Resources'][res]['USRFILE']
+            if type(userdata) == str:
+                usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
+                usrdata = open(usrdatafile, "r").read()
+                self.asg.add_user_data(usrdata)
+            elif type(userdata) == list:
+                usrdatalst = []
+                with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
+                    for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
+                        filename = usractions['filename']
+                        execution = usractions['execution']
+                        usrdatalst.append(f"{execution} {filename}\n")
+                        usrdatalst.append(f"rm {filename}\n")
+                        zip.write(filename)
+                if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
+                    customscript = Asset(
+                        self,
+                        f"{construct_id}customscript",
+                        path=f"cdk.out/{construct_id}customscript.zip"
+                    )
+                    # core.CfnOutput(self, "S3BucketName", value=customscript.s3_bucket_name)
+                    # core.CfnOutput(self, "S3ObjectKey", value=customscript.s3_object_key)
+                    # core.CfnOutput(self, "S3HttpURL", value=customscript.http_url)
+                    # core.CfnOutput(self, "S3ObjectURL", value=customscript.s3_object_url)
+                    customscript.grant_read(self.asg.role)
+                    self.asg.add_user_data(
+                        "yum install -y unzip",
+                        f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
+                        f"unzip customscript.zip",
+                        f"rm customscript.zip\n"
+                    )
+                    usrdata = ''.join(usrdatalst)
+                    self.asg.add_user_data(usrdata)
         # add tags
         if 'TAGS' in resmap['Mappings']['Resources'][res]:
             for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
