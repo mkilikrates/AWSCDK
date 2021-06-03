@@ -1,3 +1,30 @@
+#### How to call this file inside app.py file and options
+#ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
+# where:
+# ADStack ==> Name of stack, used if you will import values from it in another stack
+# myds ==> reference to this script ds.py
+# MYDS ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). . This is the name of Cloudformation Template in cdk.out dir (MYDS.template.json)
+# env ==> Environment to be used on this script (Account and region)
+# res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
+# vpc ==> vcp-id where will be created security group and launched this instance
+
+#### How to create a resource information on resourcesmap.cfg for this template
+#         "NAME": "mybucket",
+# {
+#     "dirserv": {
+#         "NAME": "myds",  ####==> It will be used to create Tag Name associated with this resource. (Mandatory)
+#         "KEY": "passphrase",  ####==> The customer-managed encryption key to use for encrypting the secret value. (Mandatory)
+#         "Type": "MSAD",  ####==> Type of Directory (SimpleAD|MSAD). (Mandatory)
+#         "DOMAIN": "corp.example.com",  ####==> Domain Name. (Mandatory)
+#         "SIZE": "Small",  ####==> Instance Size. (Large | Small) (Optional) - https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-directoryservice-simplead.html#cfn-directoryservice-simplead-size
+#         "Edition": "Standard",  ####==> Microsoft AD Edition. (Enterprise | Standard) (Optional) - https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-directoryservice-microsoftad.html#cfn-directoryservice-microsoftad-edition
+#         "SUBNETGRP": "Private",  ####==> Subnet Group used on VPC creation. (Mandatory)
+#         "ALIAS": false,  ####==> boolean - If set to true, specifies an alias for a directory and assigns the alias to the directory. The alias is used to construct the access URL for the directory, such as http://<alias>.awsapps.com. (Optional)
+#         "SSO": false,  ####==> boolean - Whether to enable single sign-on for a directory. (Optional)
+#         "SHORTNAME": "CORP"  ####==> The NetBIOS name of the directory. (Optional)
+#     }
+# }
+
 import os
 import json
 from aws_cdk import (
@@ -19,14 +46,30 @@ class myds(core.Stack):
         # get data for rds resource
         res = res
         resname = resmap['Mappings']['Resources'][res]['NAME']
+        reskey = resmap['Mappings']['Resources'][res]['KEY']
         restype = resmap['Mappings']['Resources'][res]['Type']
         resdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
-        ressize = resmap['Mappings']['Resources'][res]['SIZE']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
-        resalias = resmap['Mappings']['Resources'][res]['ALIAS']
-        ressso = resmap['Mappings']['Resources'][res]['SSO']
-        resshort = resmap['Mappings']['Resources'][res]['SHORTNAME']
-        reskey = resmap['Mappings']['Resources'][res]['KEY']
+        if 'SIZE' in resmap['Mappings']['Resources'][res]:
+            ressize = resmap['Mappings']['Resources'][res]['SIZE']
+        else:
+            ressize = 'Small'
+        if 'ALIAS' in resmap['Mappings']['Resources'][res]:
+            resalias = resmap['Mappings']['Resources'][res]['ALIAS']
+        else:
+            resalias = None
+        if 'SSO' in resmap['Mappings']['Resources'][res]:
+            ressso = resmap['Mappings']['Resources'][res]['SSO']
+        else:
+            ressso = None
+        if 'SHORTNAME' in resmap['Mappings']['Resources'][res]:
+            resshort = resmap['Mappings']['Resources'][res]['SHORTNAME']
+        else:
+            resshort = None
+        if 'Edition' in resmap['Mappings']['Resources'][res]:
+            resedt = resmap['Mappings']['Resources'][res]['Edition']
+        else:
+            resedt = 'Standard'
         # create credentials
         self.passwd = sm.Secret(
                     self,
@@ -58,26 +101,43 @@ class myds(core.Stack):
                 enable_sso=ressso,
                 short_name=resshort
             )
-            self.dsid = core.CfnOutput(
+        elif restype == 'MSAD':
+            # create MicroSoft AD
+            self.ds = ds.CfnMicrosoftAD(
                 self,
-                f"{construct_id}id",
-                value=self.ds.ref,
-                export_name=f"{construct_id}id"
+                f"{construct_id}{resname}",
+                name=resdomain,
+                password=self.passwd.secret_value_from_json(reskey).to_string(),
+                vpc_settings=ds.CfnMicrosoftAD.VpcSettingsProperty(
+                    subnet_ids=[self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids[0],self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids[1]],
+                    vpc_id=self.vpc.vpc_id
+                ),
+                create_alias=resalias,
+                edition=resedt,
+                enable_sso=ressso,
+                short_name=resshort
             )
-            if resalias == True:
-                core.CfnOutput(
-                    self,
-                    f"{construct_id}mydsAlias",
-                    value=self.ds.get_att('Alias'),
-                    export_name=f"{construct_id}mydsAlias"
-                )
-            index = 0
-            while index <= 1:
-                core.CfnOutput(
-                    self,
-                    f"{construct_id}{resname}Dns{index}",
-                    value=core.Fn.select(index, core.Token.as_list(self.ds.get_att('DnsIpAddresses'))),
-                    export_name=f"{construct_id}{resname}Dns{index}",
-                )
-                index = index + 1
+        self.dsid = core.CfnOutput(
+            self,
+            f"{construct_id}id",
+            value=self.ds.ref,
+            export_name=f"{construct_id}id"
+        )
+        if resalias == True:
+            core.CfnOutput(
+                self,
+                f"{construct_id}Alias",
+                value=self.ds.get_att('Alias'),
+                export_name=f"{construct_id}Alias"
+            )
+        index = 0
+        while index <= 1:
+            core.CfnOutput(
+                self,
+                f"{construct_id}{resname}Dns{index}",
+                value=core.Fn.select(index, core.Token.as_list(self.ds.get_att('DnsIpAddresses'))),
+                export_name=f"{construct_id}{resname}Dns{index}",
+            )
+            index = index + 1
+
 

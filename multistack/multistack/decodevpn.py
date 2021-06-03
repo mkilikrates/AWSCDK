@@ -1,3 +1,22 @@
+#### How to call this file inside app.py file and options
+#S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = S2SVPNStack.mycustomvpn, res = 's3bucket', vpc = VPCStack.vpc)
+# where:
+# S3VPNStack ==> Name of stack, used if you will import values from it in another stack
+# vpns3 ==> reference to class S2SVPNS3 and name of this script decodevpn.py
+# MY-S2SVPNS3 ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). . This is the name of Cloudformation Template in cdk.out dir (MY-S2SVPNS3.template.json)
+# env ==> Environment to be used on this script (Account and region)
+# route ==> what is the routing preference. (bgp | static)
+# vpnid ==> VPN id to download configurantion and parse to write config files
+# res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
+# vpc ==> vcp-id where will be created security group and launched this instance
+
+#### How to create a resource information on resourcesmap.cfg for this template
+# {
+#     "s3bucket": { 
+#         "NAME": "mybucket",  ####==> It will be used to create Tag Name associated with this resource. (Mandatory)
+#         "S3": "bucketname"   ####==> Bucket Name. (Mandatory)
+#     }
+# }
 import os
 import json
 from aws_cdk import (
