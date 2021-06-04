@@ -4,6 +4,7 @@
 # FlowLogsStack ==> Name of stack, used if you will import values from it in another stack (Mandatory)
 # flowlogs ==> reference to name of this script vpcflow.py on import (Mandatory)
 # MY-VPCFLOW ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). (Mandatory) This is the name of Cloudformation Template in cdk.out dir (MY-VPCFLOW.template.json)
+# logfor = 'default'  ==> Log Format, direct in the code. (defaul|full)
 # vpcid ==> VPC-ID that where flow logs will be created (Mandatory)
 # Since this templates are used to tests, there is a fixed retention policy for logs set to 1 week.
 # the log format is custom using these fields (${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status})
@@ -27,8 +28,12 @@ from aws_cdk import (
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 class flowlogs(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, vpcid = str, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, logfor = str, vpcid = str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        if logfor == 'full':
+            self.format = '${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status}'
+        else:
+            self.format = '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
         # Log Group for Flow Logs
         self.flowloggroup = log.LogGroup(
             self,
@@ -67,5 +72,5 @@ class flowlogs(core.Stack):
             log_destination_type='cloud-watch-logs',
             log_group_name=self.flowloggroup.log_group_name,
             max_aggregation_interval=60,
-            log_format=format('${version} ${account-id} ${vpc-id} ${region} ${az-id} ${sublocation-type} ${sublocation-id} ${subnet-id} ${instance-id} ${interface-id} ${type} ${pkt-src-aws-service} ${srcaddr} ${pkt-dst-aws-service} ${dstaddr} ${srcport} ${dstport} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${protocol} ${bytes} ${packets} ${start} ${end} ${action} ${tcp-flags} ${log-status}'),
+            log_format=format(self.format),
         )
