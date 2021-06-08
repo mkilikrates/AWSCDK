@@ -385,7 +385,7 @@ class s2svpn(core.Stack):
                     service_token=self.mylambda.function_arn,
                     properties=[customopts]
                 )
-                core.CfnOutput(
+                self.vpnid = core.CfnOutput(
                     self,
                     f"{construct_id}:VPNid",
                     value=self.mycustomvpn.get_att_string("VPNid"),
@@ -414,7 +414,7 @@ class s2svpn(core.Stack):
                     service_token=funct,
                     properties=[customopts]
                 )
-                core.CfnOutput(
+                self.vpnid = core.CfnOutput(
                     self,
                     f"{construct_id}:VPNid",
                     value=self.mycustomvpn.get_att_string("VPNid"),

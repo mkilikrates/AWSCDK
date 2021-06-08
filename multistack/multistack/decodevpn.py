@@ -35,13 +35,13 @@ with open(resconf) as resfile:
 
 class S2SVPNS3(core.Stack):
 
-    def __init__(self, scope: core.Construct, construct_id: str, route, res, vpnid = ec2.VpnConnection, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, route, res, vpnid = str, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # The code that defines your stack goes here
         # get imported objects
         self.vpc = vpc
-        self.vpnid = vpnid.ref
+        self.vpnid = vpnid
         self.route = route
         res = res
         self.bucketname = resmap['Mappings']['Resources'][res]['S3']

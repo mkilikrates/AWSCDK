@@ -1,29 +1,65 @@
+
 #tunnel# {{ tnum }}
 conn {{ vgw_out_addr }}
-    authby=secret
+{% if startact != "" %}
+    auto={{ startact }}
+{% else %}
     auto=start
-    sha2_truncbug=no
+{% endif %}
     left=%defaultroute
     leftid={{ cgw_out_addr }}
     right={{ vgw_out_addr }}
     type={{ ipsec_mode }}
-    keyexchange=ike
-    ikev2=permit
-    ike={{ ike_encryption_protocol }}-{{ ike_authentication_protocol }};modp1024
+    leftauth=psk
+    rightauth=psk
+{% if keych != "" %}
+    keyexchange={{ keych }}
+{% else %}
+    keyexchange=ikev1
+{% endif %}
+{% if ike != "" %}
+    ike={{ ike }}
+{% else %}
+    ike={{ ike_encryption_protocol }}-{{ ike_authentication_protocol }}-modp1024
+{% endif %}
     ikelifetime={{ ike_lifetime }}s
-    phase2alg={{ ipsec_encryption_protocol }}-{{ ipsec_authentication_protocol }};modp1024
+{% if esp != "" %}
+    esp={{ esp }}
+{% else %}
+    esp={{ ipsec_encryption_protocol }}-{{ ipsec_authentication_protocol }}-modp1024
+{% endif %}
     lifetime={{ ipsec_lifetime }}s
     keyingtries=%forever
+{% if leftsubnet != "" %}
+    leftsubnet={{ leftsubnet }}
+{% else %}
     leftsubnet=0.0.0.0/0
+{% endif %}
+{% if rightsubnet != "" %}
+    rightsubnet={{ rightsubnet }}
+{% else %}
     rightsubnet=0.0.0.0/0
-    dpddelay={{ dpd_delay }}
-    dpdtimeout={{ dpdtimeout }}
+{% endif %}
+{% if rkmg != "" %}
+    margintime={{ rkmg }}
+{% endif %}
+{% if rkfz != "" %}
+    rekeyfuzz={{ rkfz }}
+{% endif %}
+{% if ipsec_fragmentation_before_encryption != "" %}
+    fragmentation={{ ipsec_fragmentation_before_encryption }}
+{% endif %}
+{% if rplw != "" %}
+    replay_window={{ rplw }}
+{% endif %}
+    dpddelay={{ dpd_delay }}s
+{% if dpdtimeout != "" %}
+    dpdtimeout={{ dpdtimeout }}s
+{% endif %}
+{% if dpdact != "" %}
+    dpdaction={{ dpdact }}
+{% else %}
     dpdaction=restart
-    mark={{ tnum }}/0xffffffff
-    rekeymargin=540s
-    rekeyfuzz=100%
-    vti-interface=Tunnel{{ tnum }}
-    leftvti={{ cgw_in_addr }}/{{ cgw_in_cidr }}
-    vti-routing=yes
-    leftupdown="/etc/ipsec.d/aws-updown.sh -ln Tunnel{{ tnum }} -ll {{ cgw_in_addr }}/{{ cgw_in_cidr }} -lr {{ vgw_in_addr }}/{{ vgw_in_cidr }} -m {{ tnum }} -r a.b.c.d/e"
-
+{% endif %}
+    mark={{ tnum }}00
+    leftupdown="/etc/strongswan/ipsec.d/aws-updown.sh -ln Tunnel{{ tnum }} -ll {{ cgw_in_addr }}/{{ cgw_in_cidr }} -lr {{ vgw_in_addr }}/{{ vgw_in_cidr }} -m {{ tnum }}00 -r a.b.c.d/e"
