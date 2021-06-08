@@ -63,13 +63,13 @@ class EIP(core.Stack):
                 }
             ]
         )
-        core.CfnOutput(
+        self.ip = core.CfnOutput(
             self,
             f"{construct_id}:PublicIp",
             value=self.mycustomresource.get_att_string("PublicIp"),
             export_name=f"{construct_id}:PublicIp"
         )
-        core.CfnOutput(
+        self.alloc = core.CfnOutput(
             self,
             f"{construct_id}:AllocationId",
             value=self.mycustomresource.get_att_string("AllocationId"),

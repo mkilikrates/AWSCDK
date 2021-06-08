@@ -119,3 +119,15 @@ class S2SVPNS3(core.Stack):
             value=funct,
             export_name=f"{construct_id}:LambdaArn"
         )
+        # create Police for lambda function
+        self.vpnreadpolicy = iam.PolicyStatement(
+            actions=[
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            resources=[
+                f"arn:aws:s3:::{self.bucketname}",
+                f"arn:aws:s3:::{self.bucketname}/vpn/{self.vpnid}*"
+            ],
+            effect=iam.Effect.ALLOW
+        )

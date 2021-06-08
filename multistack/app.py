@@ -17,6 +17,7 @@ from multistack.eks import EksStack as eks
 from multistack.ecs import EcsStack as ecs
 from multistack.eksapp import MyAppStack as eksapp
 from multistack.netfw import internetfw as netfw
+from multistack.ec2 import InstanceStack as instance
 from multistack.eksctrl import (
     eksDNS as eksdns,
     eksELB as ekselb,
@@ -30,22 +31,20 @@ gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+VPCStack2 = VPC(app, "MY-VPC2", env=myenv2, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'inspectvpc', res = 'netfwtgw', vpc = VPCStack.vpc)
 GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
-BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'simpletshoot', preflst = False, allowall = '', ipstack = ipstack, allowsg = BationStack.bastionsg, vpc = VPCStack.vpc).add_dependency(FlowLogsStack)
-VPCStack2 = VPC(app, "MY-VPC2", env=myenv2, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 #GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcsec', bastionsg = '', tgwstack = GatewayStack, cross = False)
 #ASGStack2 = asg(app, "MY-ASG2", env=myenv, res = 'bastionsimpleiso', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
-EIPStack2 = eip(app, "MY-EIP2", env=myenv, allocregion = remoteregion)
 #GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gw.ref, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, bastionsg = BationStack2.bastionsg)
 S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncust', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource)
 S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = S2SVPNStack.mycustomvpn.ref, funct ='', res = 's3bucket', vpc = VPCStack.vpc)
-S2SVPNStack2 = s2svpn(app, "MY-VPN2", env=myenv, gwtype = gwtype, route = route, res = '', funct = S2SVPNStack.mylambda.function_arn, ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack2.mycustomresource)
-S3VPNStack2 = vpns3(app, "MY-S2SVPNS32", env=myenv, route = route, vpnid = S2SVPNStack2.vpn.ref, funct =S3VPNStack.mylambda.function_arn, res = 's3bucket', vpc = VPCStack.vpc)
+EC2Stack = instance(app, "MY-VPNSRV", env=myenv2, res = 'bastion', preflst = True, allowsg = '', allowall = '', eipall = EIPStack.alloc.to_string, instpol = S3VPNStack.vpnreadpolicy, ipstack = ipstack, vpc = VPCStack2.vpc)
 #RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', vpc = VPCStack2.vpc, bastionsg = BationStack.bastionsg)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
 #CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['mutual', 'federated'], vpc = VPCStack2.vpc, dirid = '')
