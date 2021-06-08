@@ -123,8 +123,16 @@ def lambda_handler(event, context):
                     leftsubnet = vpn['VpnConnections'][0]['Options']['LocalIpv4NetworkCidr']
                 else:
                     leftsubnet = ''
+                if 'LocalIpv6NetworkCidr' in vpn['VpnConnections'][0]['Options']:
+                    leftsubnet = vpn['VpnConnections'][0]['Options']['LocalIpv6NetworkCidr']
+                else:
+                    leftsubnet = ''
                 if 'RemoteIpv4NetworkCidr' in vpn['VpnConnections'][0]['Options']:
                     rightsubnet = vpn['VpnConnections'][0]['Options']['RemoteIpv4NetworkCidr']
+                else:
+                    rightsubnet = ''
+                if 'RemoteIpv6NetworkCidr' in vpn['VpnConnections'][0]['Options']:
+                    rightsubnet = vpn['VpnConnections'][0]['Options']['RemoteIpv6NetworkCidr']
                 else:
                     rightsubnet = ''
             # set iterator
@@ -133,16 +141,43 @@ def lambda_handler(event, context):
                 # get variables
                 logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
-                cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
-                cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
-                if routetype == 'bgp':
+                if 'tunnel_inside_address' in tun['customer_gateway']:
+                    cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
+                    cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
+                else:
+                    cgw_in_addr = ''
+                    cgw_in_cidr = ''
+                if 'tunnel_inside_ipv6_address' in tun['customer_gateway']:
+                    cgw_in_v6addr = tun['customer_gateway']['tunnel_inside_ipv6_address']['ip_address']
+                    cgw_in_v6cidr = tun['customer_gateway']['tunnel_inside_ipv6_address']['prefix_length']
+                else:
+                    cgw_in_v6addr = ''
+                    cgw_in_v6cidr = ''
+                if 'bgp' in tun['customer_gateway']:
                     cgw_bgp_asn = tun['customer_gateway']['bgp']['asn']
                     cgw_bgp_ht = tun['customer_gateway']['bgp']['hold_time']
+                else:
+                    cgw_bgp_asn = ''
+                    cgw_bgp_ht = ''
+                if 'bgp' in tun['vpn_gateway']:
                     vgw_bgp_asn = tun['vpn_gateway']['bgp']['asn']
                     vgw_bgp_ht = tun['vpn_gateway']['bgp']['hold_time']
+                else:
+                    vgw_bgp_asn = ''
+                    vgw_bgp_ht = ''
                 vgw_out_addr = tun['vpn_gateway']['tunnel_outside_address']['ip_address']
-                vgw_in_addr = tun['vpn_gateway']['tunnel_inside_address']['ip_address']
-                vgw_in_cidr = tun['vpn_gateway']['tunnel_inside_address']['network_cidr']
+                if 'tunnel_inside_address' in tun['vpn_gateway']:
+                    vgw_in_addr = tun['vpn_gateway']['tunnel_inside_address']['ip_address']
+                    vgw_in_cidr = tun['vpn_gateway']['tunnel_inside_address']['network_cidr']
+                else:
+                    vgw_in_addr = ''
+                    vgw_in_cidr = ''
+                if 'tunnel_inside_ipv6_address' in tun['vpn_gateway']:
+                    vgw_in_v6addr = tun['vpn_gateway']['tunnel_inside_ipv6_address']['ip_address']
+                    vgw_in_v6cidr = tun['vpn_gateway']['tunnel_inside_ipv6_address']['prefix_length']
+                else:
+                    vgw_in_v6addr = ''
+                    vgw_in_v6cidr = ''
                 ike_authentication_protocol = tun['ike']['authentication_protocol']
                 ike_encryption_protocol = ''.join(tun['ike']['encryption_protocol'].split('-')[:2])
                 ike_lifetime = tun['ike']['lifetime']
@@ -378,6 +413,9 @@ def lambda_handler(event, context):
                         tnum = tnum,
                         cgw_bgp_asn = cgw_bgp_asn,
                         vgw_in_addr = vgw_in_addr,
+                        cgw_in_addr = cgw_in_addr,
+                        vgw_in_v6addr = vgw_in_v6addr,
+                        cgw_in_v6addr = cgw_in_v6addr,
                         vgw_bgp_asn = vgw_bgp_asn,
                         cgw_bgp_ht = cgw_bgp_ht
                     )

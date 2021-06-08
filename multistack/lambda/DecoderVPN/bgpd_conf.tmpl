@@ -3,6 +3,13 @@
  timers 5 {{cgw_bgp_ht}}
 {% endif %}
 ! tunnel# {{ tnum }}
+{% if vgw_in_v6addr != "" %}
+ neighbor {{ vgw_in_v6addr }} remote-as {{ vgw_bgp_asn }}
+ neighbor {{ vgw_in_v6addr }} update-source {{ cgw_in_v6addr }}
+ neighbor {{ vgw_in_v6addr }} next-hop-self
+{% else %}
  neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
+ neighbor {{ vgw_in_v6addr }} update-source {{ cgw_in_addr }}
  neighbor {{ vgw_in_addr }} next-hop-self
 !
+{% endif %}
