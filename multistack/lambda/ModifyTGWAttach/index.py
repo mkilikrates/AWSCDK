@@ -12,7 +12,7 @@ region = os.environ['AWS_REGION']
 def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
-    tgwattach = event['ResourceProperties']['0']['TgwInspectionVpcAttachmentId']
+    tgwattach = event['ResourceProperties']['TgwInspectionVpcAttachmentId']
     requestId = event['RequestId']
     stacktId = event['StackId']
     logresId = event['LogicalResourceId']

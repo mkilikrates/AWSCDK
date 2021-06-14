@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_lambda_python as lpython,
     aws_iam as iam,
     aws_logs as log,
+    aws_cloudformation as cfn,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -163,15 +164,14 @@ class mygw(core.Stack):
                                 role=(self.mylambdarole),
                                 log_retention=log.RetentionDays.ONE_WEEK
                             )
-                            self.mycustomresource = core.CustomResource(
+                            self.mycustomresource = cfn.CfnCustomResource(
                                 self,
                                 f"{construct_id}:ModifyTransitGatewayVpcAttachment",
-                                service_token=self.mylambda.function_arn,properties=[
-                                    {
-                                        "TgwInspectionVpcAttachmentId" : self.gwattch.ref
-                                    }
-                                ]
+                                service_token=self.mylambda.function_arn,
                             )
+                            self.mycustomresource.add_depends_on(self.gwattch)
+                            self.mycustomresource.add_property_override("TgwInspectionVpcAttachmentId", self.gwattch.ref)
+
             if cross == False:
                 # add tgw route tables
                 if 'RT' in resmap['Mappings']['Resources'][res]:

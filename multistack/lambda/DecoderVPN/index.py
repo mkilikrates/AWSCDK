@@ -12,7 +12,6 @@ region = os.environ['AWS_REGION']
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
-ec2 = boto3.client('ec2', region_name=region)
 
 def fileupload(mycfgfile, bucketname, myobj):
     try:
@@ -49,9 +48,10 @@ def deletevpnfolder(bucketname, folder):
     except Exception as e:
         logger.info('S3: Deletion of folder Error: {}'.format(e))
 
-def describevpn(vpnid):
+def describevpn(vpnid,vpnregion):
     # Get VPN Configuration XML
     try:
+        ec2 = boto3.client('ec2', region_name=vpnregion)
         response = ec2.describe_vpn_connections(
             VpnConnectionIds=[
                 vpnid,
@@ -69,10 +69,9 @@ def lambda_handler(event, context):
     vpnid = event['ResourceProperties']['0']['VPN']
     routetype = event['ResourceProperties']['0']['Route']
     bucketname = event['ResourceProperties']['0']['S3']
-    mylocalip = event['ResourceProperties']['0']['InstIPv4']
-    if 'LocalCidr' in event['ResourceProperties']['0']:
-        localcidr = event['ResourceProperties']['0']['LocalCidr']
-    if 'RemoteCidr' in event['ResourceProperties']['0']:
+    vpnregion = event['ResourceProperties']['0']['Region']
+    localcidr = event['ResourceProperties']['0']['LocalCidr']
+    if routetype == 'static':
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
     mys3vpnfolder = f"vpn/{vpnid}/"
     mylocalfolder = '/tmp/'
@@ -97,7 +96,7 @@ def lambda_handler(event, context):
             response["Reason"] = ("VPN Config deletion succeed!")
         elif event['RequestType'] == 'Create':
             # get vpn configuration
-            vpn = describevpn(vpnid)
+            vpn = describevpn(vpnid,vpnregion)
             # create config folder to vpn files
             createfolder(bucketname,mys3vpnfolder)
             # read template files

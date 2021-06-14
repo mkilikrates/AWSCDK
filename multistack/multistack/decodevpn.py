@@ -35,7 +35,7 @@ with open(resconf) as resfile:
 
 class S2SVPNS3(core.Stack):
 
-    def __init__(self, scope: core.Construct, construct_id: str, route, funct, res, vpnid = str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, route, vpnregion, funct, res, vpnid = str, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # The code that defines your stack goes here
@@ -97,22 +97,44 @@ class S2SVPNS3(core.Stack):
                 log_retention=log.RetentionDays.ONE_WEEK
             )
             funct = self.mylambda.function_arn
-        
-        self.mycustomresource = core.CustomResource(
-            self,
-            f"{construct_id}:CustomResource",
-            service_token=funct,
-            properties=[
-                {
-                    "VPN" : self.vpnid,
-                    "Route" : self.route,
-                    "InstIPv4" : "insipv4",
-                    "RemoteCidr" : self.vpc.vpc_cidr_block,
-                    "LocalCidr" : "vpccidr",
-                    "S3" : self.bucketname,
-                }
-            ]
-        )
+        self.bucketname = resmap['Mappings']['Resources'][res]['S3']
+        if 'VPNLRT' in resmap['Mappings']['Resources'][res]:
+            self.vpnlrt = resmap['Mappings']['Resources'][res]['VPNLRT']
+        else:
+            self.vpnlrt = self.vpc.vpc_cidr_block
+        if self.route == 'static':
+            self.vpnrrt = resmap['Mappings']['Resources'][res]['VPNRRT']
+            self.mycustomresource = core.CustomResource(
+                self,
+                f"{construct_id}:CustomResource",
+                service_token=funct,
+                properties=[
+                    {
+                        "VPN" : self.vpnid,
+                        "Route" : self.route,
+                        "Region" : vpnregion,
+                        "RemoteCidr" : self.vpnrrt,
+                        "LocalCidr" : self.vpnlrt,
+                        "S3" : self.bucketname,
+                    }
+                ]
+            )
+        else:
+            self.mycustomresource = core.CustomResource(
+                self,
+                f"{construct_id}:CustomResource",
+                service_token=funct,
+                properties=[
+                    {
+                        "VPN" : self.vpnid,
+                        "Route" : self.route,
+                        "Region" : vpnregion,
+                        "S3" : self.bucketname,
+                        "LocalCidr" : self.vpnlrt,
+                    }
+                ]
+            )
+
         self.funct = core.CfnOutput(
             self,
             f"{construct_id}:LambdaArn",
@@ -131,3 +153,16 @@ class S2SVPNS3(core.Stack):
             ],
             effect=iam.Effect.ALLOW
         )
+        self.bkt = core.CfnOutput(
+            self,
+            f"{construct_id}:bucketname",
+            value=self.bucketname,
+            export_name=f"{construct_id}:bucketname"
+        )
+        self.vpndir = core.CfnOutput(
+            self,
+            f"{construct_id}:folder",
+            value=f"/vpn/{self.vpnid}/",
+            export_name=f"{construct_id}:folder"
+        )
+        

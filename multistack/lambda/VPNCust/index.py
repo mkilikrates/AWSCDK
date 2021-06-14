@@ -4,6 +4,7 @@ import json
 import logging
 import traceback
 import requests
+import time
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 region = os.environ['AWS_REGION']
@@ -16,6 +17,16 @@ def check_num(s):
   except:
     return False
 
+
+def describe_vpn_connections(vpnid):
+    try:
+        response = ec2.describe_vpn_connections(
+            VpnConnectionIds=[vpnid]
+        )
+        logger.info('EC2: Describing VPN Connection: {}'.format(vpnid))
+        return response
+    except Exception as e:
+        logger.info('EC2: Describing VPN Connection Error: {}'.format(e))
 
 def delete_vpn_connection(vpnid):
     try:
@@ -136,10 +147,16 @@ def lambda_handler(event, context):
                 keylist['Options'] = vpnopts
             vpn = create_vpn_connection(keylist)
             phyresId = vpn["VpnConnection"]["VpnConnectionId"]
+            state = vpn["VpnConnection"]["State"]
             response["Status"] = "SUCCESS"
             response["Reason"] = ("VPN Connection Created!")
             response["PhysicalResourceId"] = phyresId
             response["Data"] = { "VPNid" : phyresId }
+            while state == "pending":
+                logger.info("Waiting 30 seconds for VPN State be ready")
+                time.sleep(30)
+                vpn = describe_vpn_connections(phyresId)
+                state = vpn["VpnConnections"][0]["State"]
         else:
             phyresId = event['PhysicalResourceId']
             response["Status"] = "SUCCESS"

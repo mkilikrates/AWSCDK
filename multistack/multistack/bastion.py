@@ -317,12 +317,13 @@ class BastionStack(core.Stack):
             value=self.bastionsg.security_group_id,
             export_name=f"{construct_id}:sg"
         )
-        core.CfnOutput(
-            self,
-            f"{construct_id}:ipv4",
-            value=self.bastion.__getattribute__("instance_public_ip"),
-            export_name=f"{construct_id}:ipv4"
-        )
+        if ressubgrp == "Public":
+            core.CfnOutput(
+                self,
+                f"{construct_id}:ipv4",
+                value=self.bastion.__getattribute__("instance_public_ip"),
+                export_name=f"{construct_id}:ipv4"
+            )
         if self.ipstack == 'Ipv6':
             self.bastion.instance.instance.add_property_override("Ipv6AddressCount", 1)
 
