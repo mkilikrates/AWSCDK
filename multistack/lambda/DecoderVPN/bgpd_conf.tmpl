@@ -1,6 +1,7 @@
 {% if tnum == 1 %}
  router bgp {{ cgw_bgp_asn }}
  timers 5 {{cgw_bgp_ht}}
+ network {{localcidr}}
 {% endif %}
 ! tunnel# {{ tnum }}
 {% if vgw_in_v6addr != "" %}
