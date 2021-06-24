@@ -63,7 +63,7 @@ class extdns(cdk8s.Chart):
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.svcaccount = svcaccount
-        AwsExternalDns(
+        self.extdns = AwsExternalDns(
             self,
             "external-dns",
             domain_filter='',
@@ -72,6 +72,7 @@ class extdns(cdk8s.Chart):
             # Valid values are public, private, or no value for both
         )
         AwsExternalDnsPolicyHelper.add_policy(self.svcaccount)
+
 
 class extdnspol(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:

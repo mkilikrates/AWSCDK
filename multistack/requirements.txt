@@ -26,10 +26,12 @@ aws_cdk.aws_s3_assets
 cdk_ec2_key_pair
 PyYAML
 constructs
+requests
 cdk8s
 cdk8s_plus
+#cdk8s_plus_17
+cdk8s_external_dns
 cdk8s_aws_alb_ingress_controller
 cdk8s_aws_load_balancer_controller
-requests
-cdk8s_external_dns
+# error with cdk8s_plus_17 and cdk8s-0.33.0 - https://github.com/cdk8s-team/cdk8s/issues/479
 -e .

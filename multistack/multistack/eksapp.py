@@ -1,6 +1,8 @@
 import os
 import json
+import requests
 import yaml
+import requests
 from aws_cdk import (
     aws_iam as iam,
     aws_eks as eks,
@@ -45,31 +47,25 @@ class MyAppStack(core.Stack):
             name=f"{construct_id}-{resname}-svcacc",
             namespace=('default')
         )
-        # # get hosted zone id
-        if elbface == True:
-            self.hz = r53.HostedZone.from_lookup(
-                self,
-                f"{construct_id}:Domain",
-                domain_name=appdomain,
-                private_zone=False
-            )
-        else:
-            self.hz = r53.PrivateHostedZone.from_lookup(
-                self,
-                f"{construct_id}:PrivDomain",
-                domain_name=appdomain,
-                private_zone=True,
-            )
-            #associate hosted zone with vpc
+        # check if need certificate
+        if reselb != 'nginx':
+            # # get hosted zone id
+            if elbface == True:
+                self.hz = r53.HostedZone.from_lookup(
+                    self,
+                    f"{construct_id}:Domain",
+                    domain_name=appdomain,
+                    private_zone=False
+                )
+                #generate public certificate
+                self.cert = acm.Certificate(
+                    self,
+                    f"{construct_id}:Certificate",
+                    domain_name=f"{resname}.{appdomain}",
+                    validation=acm.CertificateValidation.from_dns(self.hz)
+                )
+        #associate hosted zone with vpc
 
-        if reslbport == 443 and elbface == True:
-            #generate public certificate
-            self.cert = acm.Certificate(
-                self,
-                f"{construct_id}:Certificate",
-                domain_name=f"{resname}.{appdomain}",
-                validation=acm.CertificateValidation.from_dns(self.hz)
-            )
         # check if want to want copy files to nginx test
         self.mysvcacc.add_to_principal_policy(
             statement=iam.PolicyStatement(
@@ -156,12 +152,15 @@ class MyAppStack(core.Stack):
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout'] = "6"
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold'] = "2"
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold'] = "2"
-        # create route53 name
-        mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
-        mysvcannot['external-dns.alpha.kubernetes.io/ttl'] = '60'
-        # When this annotation is set，the loadbalancers will only register nodes
-        # with pod running on it, otherwise all nodes will be registered.
-        mysvcannot['service.kubernetes.io/local-svc-only-bind-node-with-pod'] = 'true'
+        if reselb == 'nginx':
+            mysvcannot['kubernetes.io/ingress.class'] = reselb
+        if reselb != 'nginx':
+            # create route53 name
+            mysvcannot['external-dns.alpha.kubernetes.io/hostname'] = f"{resname}.{appdomain}"
+            mysvcannot['external-dns.alpha.kubernetes.io/ttl'] = '60'
+            # When this annotation is set，the loadbalancers will only register nodes
+            # with pod running on it, otherwise all nodes will be registered.
+            mysvcannot['service.kubernetes.io/local-svc-only-bind-node-with-pod'] = 'true'
         #print(mysvcannot)
         ########################################### Works
         # # define app chart
@@ -219,7 +218,6 @@ class MyAppStack(core.Stack):
             }
         }
         if reselb == 'alb':
-            # add annotations to service
             self.mysvc = {
                 'apiVersion': 'v1',
                 'kind': 'Service',
@@ -237,39 +235,6 @@ class MyAppStack(core.Stack):
                     'selector': appLabel
                 }
             }
-            # self.myingress = {
-            #     'apiVersion': 'extensions/v1beta1',
-            #     'kind': 'Ingress',
-            #     'metadata': { 
-            #         'name': f"{construct_id}mysvc",
-            #         'labels': appLabel,
-            #         'annotations': mysvcannot
-            #     },
-            #     'spec': {
-            #         'rules': [
-            #             {
-            #                 'http': {
-            #                     'paths' : [
-            #                         {
-            #                             'path' : '/*',
-            #                             'backend' : {
-            #                                 'serviceName' : "ssl-redirect",
-            #                                 'servicePort' : "use-annotation"
-            #                             },
-            #                         },
-            #                         {
-            #                             'path' : '/*',
-            #                             'backend' : {
-            #                                 'serviceName' : f"{construct_id}-{resname}",
-            #                                 'servicePort' : restgport
-            #                             },
-            #                         }
-            #                     ]
-            #                 }
-            #             }
-            #         ]
-            #     }
-            # }
             self.myingress = {
                 'apiVersion': 'networking.k8s.io/v1',
                 'kind': 'Ingress',
@@ -320,15 +285,6 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc, self.myingress]
             )
-            # #get the ELB name
-            # self.svcaddr = eks.KubernetesObjectValue(
-            #     self,
-            #     'LoadBalancerAttribute',
-            #     cluster=self.eksclust,
-            #     object_type='ingress',
-            #     object_name=f"{construct_id}mysvc",
-            #     json_path='.status.loadBalancer.ingress[0].hostname'
-            # )
         if reselb == 'nlb' or reselb == 'nlb-ip':
             # add annotations to service
             self.mysvc = {
@@ -358,27 +314,157 @@ class MyAppStack(core.Stack):
                 cluster=self.eksclust,
                 manifest=[self.mydeploy, self.mysvc]
             )
-        #     #get the ELB name
-        #     self.svcaddr = eks.KubernetesObjectValue(
-        #         self,
-        #         'LoadBalancerAttribute',
-        #         cluster=self.eksclust,
-        #         object_type='service',
-        #         object_name=f"{construct_id}-{resname}",
-        #         json_path='.status.loadBalancer.ingress[0].hostname'
-        #     )
-        # #show the APP DNS
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:APP DNS",
-        #     value=f"{resname}.{appdomain}"
-        # )
-        # # show the ALB DNS
-        # core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:ALB DNS",
-        #     value=self.svcaddr.value
-        # )
+        if reselb == 'nginx':
+            self.mysvc = {
+                'apiVersion': 'v1',
+                'kind': 'Service',
+                'metadata': { 
+                    'name': f"{construct_id}-{resname}",
+                },
+                'spec': {
+                    'type': "NodePort",
+                    'ports': [
+                        {
+                            'port': restgport,
+                            'targetPort': restgport
+                        }
+                    ],
+                    'selector': appLabel
+                }
+            }
+            # deploy manifest
+            self.manif = eks.KubernetesManifest(
+                self,
+                f"{construct_id}Manifest",
+                cluster=self.eksclust,
+                manifest=[self.mydeploy, self.mysvc]
+            )
+
+class AppStack(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, ekscluster = eks.Cluster, elbsg = ec2.SecurityGroup, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.eksclust = ekscluster
+        self.vpc = vpc
+        self.ipstack = ipstack
+        self.allowsg = allowsg
+        res = res
+        for resapp in resmap['Mappings']['Resources'][res]:
+            resname = resapp['NAME']
+            # check and implement features
+            if 'NS' in resapp:
+                resns = resapp['NS']
+            else:
+                resns = 'default'
+            if 'SVCNAME' in resapp:
+                ressvcacc = resapp['SVCNAME']
+                self.svcacc = eks.ServiceAccount(
+                    self,
+                    id=f"{ressvcacc}",
+                    name=f"{ressvcacc}",
+                    cluster=self.eksclust,
+                    namespace=resns
+                )
+                if 'POLICE' in resapp:
+                    mypol = []
+                    for police in resapp['POLICE']:
+                        newpol = {}
+                        if 'Actions' in police:
+                            newpol["actions"] = police['Actions']
+                        if 'Conditions' in police:
+                            newpol["conditions"] = police['Conditions']
+                        if 'Effect' in police:
+                            if police['Effect'] == "allow":
+                                newpol["effect"] = iam.Effect.ALLOW
+                            if police['Effect'] == "deny":
+                                newpol["effect"] = iam.Effect.DENY
+                        if 'NoActions' in police:
+                            newpol["not_actions"] = police['NoActions']
+                        if 'NoResources' in police:
+                            newpol["not_resources"] = police['NoResources']
+                        if 'Principals' in police:
+                            newpol["principals"] = [iam.ArnPrincipal(police['Principals'])]
+                        if 'NoPrincipals' in police:
+                            newpol["not_principals"] = police['NoPrincipals']
+                        if 'Resources' in police:
+                            newpol["resources"] = police['Resources']
+                        if 'SID' in police:
+                            newpol["sid"] = police['SID']
+                        #mypol.append(iam.PolicyStatement(**newpol))
+                        self.svcacc.add_to_policy(iam.PolicyStatement(**newpol))
+                if 'POLICEFILE' in resapp:
+                    polfile = resapp['POLICEFILE']
+                    with open(polfile) as resfile:
+                        respol = json.load(resfile)
+                    mypol = []
+                    for police in respol['Statement']:
+                        newpol = {}
+                        if 'Actions' in police:
+                            newpol["actions"] = police['Actions']
+                        if 'Conditions' in police:
+                            newpol["conditions"] = police['Conditions']
+                        if 'Effect' in police:
+                            if police['Effect'] == "allow":
+                                newpol["effect"] = iam.Effect.ALLOW
+                            if police['Effect'] == "deny":
+                                newpol["effect"] = iam.Effect.DENY
+                        if 'NoActions' in police:
+                            newpol["not_actions"] = police['NoActions']
+                        if 'NoResources' in police:
+                            newpol["not_resources"] = police['NoResources']
+                        if 'Principals' in police:
+                            newpol["principals"] = [iam.ArnPrincipal(police['Principals'])]
+                        if 'NoPrincipals' in police:
+                            newpol["not_principals"] = police['NoPrincipals']
+                        if 'Resources' in police:
+                            newpol["resources"] = police['Resources']
+                        if 'SID' in police:
+                            newpol["sid"] = police['SID']
+                        mypol.append(iam.PolicyStatement(**newpol))
+                    self.svcacc.add_to_policy(mypol)
+            mnfstlst = []
+            if 'MANIFEST' in resapp:
+                for mnfst in resapp['MANIFEST']:
+                    mnfstlst.append(mnfst)
+            if 'MANIFESTFILE' in resapp:
+                yamlmanifest = resapp['MANIFESTFILE']
+                if type(yamlmanifest) == str:
+                    yamldata = open(yamlmanifest, "r").read()
+                    mnftlst = yaml.load_all(yamldata, Loader=yaml.FullLoader)
+                    for item in mnftlst:
+                        mnfstlst.append(item)
+                elif type(yamlmanifest) == list:
+                    for mnfstfile in yamlmanifest:
+                        yamldata = open(mnfstfile, "r").read()
+                        mnftlst = yaml.load_all(yamldata, Loader=yaml.FullLoader)
+                        for item in mnftlst:
+                            mnfstlst.append(item)
+            if 'MANIFESTURL' in resapp:
+                url = resapp['MANIFESTURL']
+                if type(url) == str:
+                    mnftlst = yaml.load_all(requests.get(url).content, Loader=yaml.FullLoader)
+                    for item in mnftlst:
+                        mnfstlst.append(item)
+                elif type(url) == list:
+                    for surl in url:
+                        mnftlst = yaml.load_all(requests.get(surl).content, Loader=yaml.FullLoader)
+                        for item in mnftlst:
+                            mnfstlst.append(item)
+            # deploy manifest
+            self.manif = eks.KubernetesManifest(
+                self,
+                f"{resname}Manifest",
+                cluster=self.eksclust,
+                manifest=mnfstlst
+            )
+            #write manifest yaml file
+            yamlmanifest = yaml.dump_all(mnfstlst)
+            outputyaml = f"{yamloutdir}{construct_id}.yaml"
+            outputfile = open(outputyaml, 'w')
+            outputfile.write(yamlmanifest)
+            outputfile.close()
+
+
 
 
 
