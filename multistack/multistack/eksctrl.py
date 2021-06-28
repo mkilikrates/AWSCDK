@@ -28,7 +28,7 @@ class eksELB(core.Stack):
             name="aws-load-balancer-controller",
             namespace=('default')
         )
-        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
+        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
         mypol = requests.get(url)
         mypolstat = json.dumps(mypol.json())
         mynewpol = json.loads(mypolstat)
@@ -46,6 +46,17 @@ class eksELB(core.Stack):
             "aws-load-balancer-controller",
             chart=self.manifest
         ).node.add_dependency(self.albsvcacc)
+        # # in case of failure, remove using the following cli
+        # kubectl delete customresourcedefinition.apiextensions.k8s.io/targetgroupbindings.elbv2.k8s.aws
+        # kubectl delete secret/aws-load-balancer-tls
+        # kubectl delete clusterrole.rbac.authorization.k8s.io/aws-load-balancer-controller-role
+        # kubectl delete role.rbac.authorization.k8s.io/aws-load-balancer-controller-leader-election-role
+        # kubectl delete rolebinding.rbac.authorization.k8s.io/aws-load-balancer-controller-leader-election-rolebinding
+        # kubectl delete service/aws-load-balancer-webhook-service
+        # kubectl delete deployment.apps/aws-load-balancer-controller
+        # kubectl delete mutatingwebhookconfiguration.admissionregistration.k8s.io/aws-load-balancer-webhook
+        # kubectl delete validatingwebhookconfiguration.admissionregistration.k8s.io/aws-load-balancer-webhook
+        # kubectl delete clusterrolebindings.rbac.authorization.k8s.io/aws-load-balancer-controller-rolebinding
 
 class eksING(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
@@ -58,7 +69,7 @@ class eksING(core.Stack):
             name="aws-load-balancer-controller",
             namespace=('default')
         )
-        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
+        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
         mypol = requests.get(url)
         mypolstat = json.dumps(mypol.json())
         mynewpol = json.loads(mypolstat)
@@ -72,10 +83,17 @@ class eksING(core.Stack):
             svcaccount = self.ingsvcacc,
         )
         # apply chart
-        self.chart = self.eksclust.add_cdk8s_chart(
-            "aws-load-balancer-controller",
+        self.chart = eks.HelmChart(
+            self,
+            "Chart-aws-load-balancer-controller",
+            cluster=self.eksclust,
+            namespace='default',
             chart=self.manifest
         ).node.add_dependency(self.ingsvcacc)
+        # self.chart = self.eksclust.add_cdk8s_chart(
+        #     "aws-load-balancer-controller",
+        #     chart=self.manifest
+        # ).node.add_dependency(self.ingsvcacc)
 
 class eksDNS(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
@@ -282,3 +300,52 @@ class eksNGINXMNF(core.Stack):
         outputfile.write(yamlmanifest)
         outputfile.close()
         
+class eksINGMNF(core.Stack):
+    def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+        # get imported objects
+        self.eksclust = ekscluster
+        # service account for load balancer
+        self.ingsvcacc = eks.ServiceAccount(
+            self,
+            "aws-load-balancer-controller-service-account",
+            name="aws-load-balancer-controller",
+            namespace=('default'),
+            cluster=self.eksclust
+        )
+        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
+        mypol = requests.get(url)
+        mypolstat = json.dumps(mypol.json())
+        mynewpol = json.loads(mypolstat)
+        for statement in mynewpol['Statement']:
+            self.ingsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+        # load balancer controller
+        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/v2_2_0_full.yaml'
+        mnftlst = yaml.load_all(requests.get(url).content, Loader=yaml.FullLoader)
+        manifest = []
+        for item in mnftlst:
+            if item['kind'] == 'Deployment':
+                if 'containers' in item['spec']['template']['spec']:
+                    for container in item['spec']['template']['spec']['containers']:
+                        if 'args' in container:
+                            for arg in container['args']:
+                                if arg == "--cluster-name=your-cluster-name":
+                                    arg = "--cluster-name={{ cluster-name }}"
+            manifest.append(item)
+        #manifest = yaml.dump_all(mnftlst)
+        self.Manifest = eks.KubernetesManifest(
+            self,
+            'aws-load-balancer-controller',
+            cluster=self.eksclust,
+            manifest=manifest,
+            overwrite=True,
+            skip_validation=True
+        )
+        #write manifest yaml file
+        yamlmanifest = yaml.dump_all(manifest)
+        outputyaml = f"{yamloutdir}{construct_id}.yaml"
+        outputfile = open(outputyaml, 'w')
+        outputfile.write(yamlmanifest)
+        outputfile.close()
+
+

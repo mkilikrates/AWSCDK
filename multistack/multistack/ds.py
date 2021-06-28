@@ -119,25 +119,25 @@ class myds(core.Stack):
             )
         self.dsid = core.CfnOutput(
             self,
-            f"{construct_id}id",
+            f"{self.stack_name}id",
             value=self.ds.ref,
-            export_name=f"{construct_id}id"
+            export_name=f"{self.stack_name}id"
         )
         if resalias == True:
             core.CfnOutput(
                 self,
-                f"{construct_id}Alias",
+                f"{self.stack_name}Alias",
                 value=self.ds.get_att('Alias'),
-                export_name=f"{construct_id}Alias"
+                export_name=f"{self.stack_name}Alias"
             )
         index = 0
         while index <= 1:
             core.CfnOutput(
                 self,
-                f"{construct_id}{resname}Dns{index}",
+                f"{self.stack_name}Dns{index}",
                 value=core.Fn.select(index, core.Token.as_list(self.ds.get_att('DnsIpAddresses'))),
-                export_name=f"{construct_id}{resname}Dns{index}",
-            )
+                export_name=f"{self.stack_name}Dns{index}",
+            ).override_logical_id(f"{self.stack_name}Dns{index}")
             index = index + 1
 
 
