@@ -153,6 +153,25 @@ class InstanceStack(core.Stack):
             mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         else:
             mykey = ''
+        if 'IMAGE' in resmap['Mappings']['Resources'][res]:
+            if resmap['Mappings']['Resources'][res]['IMAGE'] == 'AWSL2':
+                machineimage = ec2.AmazonLinuxImage(
+                    edition=ec2.AmazonLinuxEdition.STANDARD,
+                    generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                )
+                image = 'Linux'
+            elif resmap['Mappings']['Resources'][res]['IMAGE'] == 'WIN2019FULL':
+                machineimage = ec2.WindowsImage(
+                    version=ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
+                )
+                image = 'Windows'
+        else:
+            machineimage = ec2.AmazonLinuxImage(
+                edition=ec2.AmazonLinuxEdition.STANDARD,
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            )
+            image = 'Linux'
+
         # create instance
         self.instance = ec2.Instance(
             self,
@@ -161,10 +180,7 @@ class InstanceStack(core.Stack):
                 instance_class=ec2.InstanceClass(resclass),
                 instance_size=ec2.InstanceSize(ressize)
             ),
-            machine_image=ec2.AmazonLinuxImage(
-                edition=ec2.AmazonLinuxEdition.STANDARD,
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-            ),
+            machine_image=machineimage,
             vpc=self.vpc,
             block_devices=myblkdev,
             instance_name=resname,
@@ -185,20 +201,21 @@ class InstanceStack(core.Stack):
         if mykey != '':
             self.instance.instance.add_property_override("KeyName", mykey)
         # update awscli
-        self.instance.add_user_data(
-            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-            "rm /usr/bin/aws",
-            "unzip awscliv2.zip",
-            "rm awscliv2.zip",
-            "./aws/install -i /usr/local/aws-cli -b /usr/bin"
-        )
+        if image == 'Linux':
+            self.instance.add_user_data(
+                "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                "rm /usr/bin/aws",
+                "unzip awscliv2.zip",
+                "rm awscliv2.zip",
+                "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+            )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             userdata = resmap['Mappings']['Resources'][res]['USRFILE']
             if type(userdata) == str:
                 usrdatafile = resmap['Mappings']['Resources'][res]['USRFILE']
                 usrdata = open(usrdatafile, "r").read()
                 self.instance.add_user_data(usrdata)
-            elif type(userdata) == list:
+            elif type(userdata) == list and image == 'Linux':
                 usrdatalst = []
                 with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
                     for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
