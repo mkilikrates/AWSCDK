@@ -209,6 +209,16 @@ class InstanceStack(core.Stack):
                 "rm awscliv2.zip",
                 "./aws/install -i /usr/local/aws-cli -b /usr/bin"
             )
+        if image == 'Windows':
+            self.instance.add_user_data(
+                "$Path = $env:TEMP;",
+                "$Installer = \"msiexec.exe\";",
+                "$Package = \"AWSCLIV2.msi\";",
+                "$arguments = \"/I $Path\$Package /qn\";",
+                "Invoke-WebRequest \"https://awscli.amazonaws.com/AWSCLIV2.msi\" -OutFile     $Path\$Package;",
+                "Start-Process $Installer -Wait -ArgumentList $arguments;",
+                "Remove-Item $Path\$Package"
+            )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             userdata = resmap['Mappings']['Resources'][res]['USRFILE']
             if type(userdata) == str:
