@@ -283,4 +283,24 @@ class InstanceStack(core.Stack):
             )
         if self.ipstack == 'Ipv6':
             self.instance.instance.add_property_override("Ipv6AddressCount", 1)
-
+        # some outputs
+        core.CfnOutput(
+            self,
+            f"{construct_id}:ID",
+            value=self.instance.instance_id,
+            export_name=f"{construct_id}:ID"
+        )
+        core.CfnOutput(
+            self,
+            f"{construct_id}:PrivIP",
+            value=self.instance.instance_private_ip,
+            export_name=f"{construct_id}:PrivIP"
+        )
+        if ressubgrp == 'Public' or eipall !='':
+            core.CfnOutput(
+                self,
+                f"{construct_id}:PubIP",
+                value=self.instance.instance_public_ip,
+                export_name=f"{construct_id}:PubIP"
+            )
+        
