@@ -219,6 +219,24 @@ class InstanceStack(core.Stack):
                 "Start-Process $Installer -Wait -ArgumentList $arguments;",
                 "Remove-Item $Path\$Package"
             )
+        # add key on ~.ssh/ for ec2-user
+        if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
+            self.key.grant_read_on_private_key(self.instance.role)
+            if image == 'Linux':
+                self.instance.add_user_data(
+                    f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
+                    f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
+                    "chown -R ec2-user:ec2-user /home/ec2-user/.ssh",
+                    "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)",
+                    f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
+                )
+            if image == 'Windows':
+                self.instance.add_user_data(
+                    "mkdir $home\\.ssh\n"
+                    f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\n",
+                    "function ec2ssh([string]$dst){ssh -l ec2-user -i \"$home\\.ssh\\"f"{construct_id}{keyname}-{region}.pem" "$dst\"}\n",
+                    "Set-Alias -Name ec2 -Value ec2ssh\n"
+                )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             userdata = resmap['Mappings']['Resources'][res]['USRFILE']
             if type(userdata) == str:
