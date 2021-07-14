@@ -232,10 +232,10 @@ class InstanceStack(core.Stack):
                 )
             if image == 'Windows':
                 self.instance.add_user_data(
-                    "mkdir $home\\.ssh\n"
-                    f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\n",
                     "function ec2ssh([string]$dst){ssh -l ec2-user -i \"$home\\.ssh\\"f"{construct_id}{keyname}-{region}.pem" "$dst\"}\n",
-                    "Set-Alias -Name ec2 -Value ec2ssh\n"
+                    "Set-Alias -Name ec2 -Value ec2ssh\n",
+                    "mkdir $home\\.ssh\n",
+                    "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
                 )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             userdata = resmap['Mappings']['Resources'][res]['USRFILE']

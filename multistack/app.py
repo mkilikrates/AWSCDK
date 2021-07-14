@@ -35,7 +35,7 @@ myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envir
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 route = 'bgp'
 gwtype = 'tgw'
-ipstack = 'Ipv4'
+ipstack = 'Ipv6'
 app = core.App()
 VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
