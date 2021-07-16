@@ -230,4 +230,18 @@ class VPC(core.Stack):
                 subnet.node.children[0].assign_ipv6_address_on_creation=True
                 subnet.node.add_dependency(self.ipv6_block)
                 i = i + 1
+            self.v6 = core.CfnOutput(
+                self,
+                f"{self.stack_name}:Ipv6Cidr",
+                # value=core.Fn.select(0,self.vpc.vpc_ipv6_cidr_blocks),
+                value= core.Token.as_string(self.vpc.vpc_ipv6_cidr_blocks),
+                export_name=f"{self.stack_name}:Ipv6Cidr"
+            )
+        self.v4 = core.CfnOutput(
+            self,
+            f"{self.stack_name}:Ipv4Cidr",
+            value=self.vpc.vpc_cidr_block,
+            export_name=f"{self.stack_name}:Ipv4Cidr"
+        )
+            
 

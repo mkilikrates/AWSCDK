@@ -35,21 +35,22 @@ myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envir
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 route = 'bgp'
 gwtype = 'tgw'
-ipstack = 'Ipv6'
+ipstack = 'Ipv4'
 app = core.App()
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
+VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'protectedvpc', cidrid = 0, natgw = 0, maxaz = 2, ipstack = ipstack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #FlowLogsStack.add_dependency(target=VPCStack)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
 #ADStack.add_dependency(target=FlowLogsStack)
 #R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
 # R53RsvStack.add_dependency(target=ADStack)
-#NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'inspectvpc', res = 'netfwtgw', vpc = VPCStack.vpc)
+NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpc', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
 #GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgwnetfw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'inspectvpc', bastionsg = '', tgwstack = '', cross = False)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
-InstanceStack = instance(app, "My-instance", env=myenv, res = 'winbast', preflst = True, allowsg = '', instpol = '', eipall = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
-#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
-#BationStack.add_dependency(target=VpcEndpointsStack)
+#InstanceStack = instance(app, "My-instance", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', eipall = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#InstanceStack.add_dependency(target=NetFWStack)
+BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+BationStack.add_dependency(target=NetFWStack)
 #ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxbe', preflst = False, allowall = '', ipstack = ipstack, allowsg = BationStack.bastionsg, vpc = VPCStack.vpc)
 #ASGStack.add_dependency(target=VpcEndpointsStack)
 #RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', vpc = VPCStack2.vpc, bastionsg = BationStack.bastionsg)

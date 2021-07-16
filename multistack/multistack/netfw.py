@@ -18,10 +18,11 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class internetfw(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, vpcname = str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, ipstack, vpcname = str, vpcstackname = str, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
+        self.ipstack = ipstack
         netfwrlgrpcap = 100
         # get config for resource
         res = res
@@ -45,24 +46,73 @@ class internetfw(core.Stack):
                     mystatelessruleatt = {}
                     if 'SRC' in rule:
                         sources = []
-                        for rulesrc in rule['SRC']:
-                            sources.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(rulesrc)))
+                        src = rule['SRC']
+                        if type(src) == str:
+                            if src == 'VPC':
+                                sources.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(self.vpc.vpc_cidr_block)))
+                            else:
+                                sources.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(src)))
+                        else:
+                            for rulesrc in rule['SRC']:
+                                sources.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(rulesrc)))
                         mystatelessruleatt['sources'] = sources
                     if 'SRCPT' in rule:
+                        srcpt = rule['SRCPT']
                         source_ports = []
-                        for ptfrom, ptto in rule['SRCPT']:
-                            source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=ptfrom, to_port=ptto))
+                        if type(srcpt) == str:
+                            if '-' in srcpt:
+                                pt = srcpt.split('-')
+                                source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(pt[0]), to_port=int(pt[1])))
+                            else:
+                                source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(srcpt), to_port=int(srcpt)))
+                        else:
+                            for srcpt in rule['SRCPT']:
+                                if '-' in srcpt:
+                                    pt = srcpt.split('-')
+                                    source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(pt[0]), to_port=int(pt[1])))
+                                else:
+                                    source_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(srcpt), to_port=int(srcpt)))
                         mystatelessruleatt['source_ports'] = source_ports
                     if 'DST' in rule:
                         destinations = []
-                        for ruledst in rule['DST']:
-                            destinations.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(ruledst)))
+                        dst = rule['DST']
+                        if type(dst) == str:
+                            if dst == 'VPC':
+                                destinations.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(self.vpc.vpc_cidr_block)))
+                            else:
+                                destinations.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(dst)))
+                        else:
+                            for ruledst in rule['DST']:
+                                destinations.append(netfw.CfnRuleGroup.AddressProperty(address_definition=(ruledst)))
                         mystatelessruleatt['destinations'] = destinations
                     if 'DSTPT' in rule:
+                        dstpt = rule['DSTPT']
                         destination_ports = []
-                        for ptfrom, ptto in rule['DSTPT']:
-                            destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=ptfrom, to_port=ptto))
+                        if type(dstpt) == str:
+                            if '-' in dstpt:
+                                pt = dstpt.split('-')
+                                destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(pt[0]), to_port=int(pt[1])))
+                            else:
+                                destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(dstpt), to_port=int(dstpt)))
+                        else:
+                            for dstpt in rule['DSTPT']:
+                                if '-' in dstpt:
+                                    pt = dstpt.split('-')
+                                    destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(pt[0]), to_port=int(pt[1])))
+                                else:
+                                    destination_ports.append(netfw.CfnRuleGroup.PortRangeProperty(from_port=int(dstpt), to_port=int(dstpt)))
                         mystatelessruleatt['destination_ports'] = destination_ports
+                    if 'PROTO' in rule:
+                        protocols = []
+                        if type(rule['PROTO']) == int:
+                                protocols.append(rule['PROTO'])
+                        else:
+                            for proto in rule['PROTO']:
+                                protocols.append(proto)
+                        mystatelessruleatt['protocols'] = protocols
+                    if 'TFLAGS' in rule:
+                        tcp_flags = rule['TFLAGS']
+                        mystatelessruleatt['tcp_flags'] = tcp_flags
                     mystatelessrulelst.append(netfw.CfnRuleGroup.StatelessRuleProperty(
                         priority= rule['PRI'],
                         rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
@@ -104,7 +154,10 @@ class internetfw(core.Stack):
                     mystatefulipset = {}
                     for ipset in resmap['Mappings']['Resources'][statefulname]['IPSET']:
                         ipsetvar = ipset['VARIABLE']
-                        definition = ipset['DEFINITION']
+                        if ipset['DEFINITION'] == 'VPC':
+                            definition = [self.vpc.vpc_cidr_block]
+                        else:
+                            definition = ipset['DEFINITION']
                         mystatefulipset[ipsetvar] = {"Definition" : definition}
                     # myrulevariable = netfw.CfnRuleGroup.IPSetProperty(ipsetvar, definition=definition)
                     myrulevariable = netfw.CfnRuleGroup.RuleVariablesProperty(ip_sets=mystatefulipset)
@@ -362,7 +415,7 @@ class internetfw(core.Stack):
 
         endpointlist = self.netfirewall.attr_endpoint_ids
         index = 0
-        while index <= (len(endpointlist) + 1):
+        while index <= (len(endpointlist)):
             fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             core.CfnOutput(
