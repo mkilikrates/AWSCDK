@@ -43,6 +43,8 @@ class S2SVPNS3(core.Stack):
         self.vpc = vpc
         self.vpnid = vpnid
         self.route = route
+        if vpnregion == '':
+            vpnregion = region
         res = res
         self.bucketname = resmap['Mappings']['Resources'][res]['S3']
         if funct =='':

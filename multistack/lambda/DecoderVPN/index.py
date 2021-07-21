@@ -6,6 +6,8 @@ import time
 import logging
 import traceback
 import requests
+import socket
+import struct
 import xmltodict
 from jinja2 import Template
 region = os.environ['AWS_REGION']
@@ -71,6 +73,9 @@ def lambda_handler(event, context):
     bucketname = event['ResourceProperties']['0']['S3']
     vpnregion = event['ResourceProperties']['0']['Region']
     localcidr = event['ResourceProperties']['0']['LocalCidr']
+    localnet, localnetbits = localcidr.split('/')
+    localhostbits = 32 - int(localnetbits)
+    localnetmask = socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << localhostbits)))
     if routetype == 'static':
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
     else:
@@ -114,6 +119,10 @@ def lambda_handler(event, context):
                 bgpd_conf = f.read()
             templatequa = Template(bgpd_conf)
             f.close()
+            with open('cisco_asr_conf.tmpl') as f:
+                ipsec_conf_asr = f.read()
+            templateasr = Template(ipsec_conf_asr)
+            f.close()
             # parse configuration
             myvpnconfig = vpn['VpnConnections'][0]['CustomerGatewayConfiguration']
             myvpnxml = xmltodict.parse(myvpnconfig)
@@ -144,6 +153,7 @@ def lambda_handler(event, context):
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 if 'tunnel_inside_address' in tun['customer_gateway']:
                     cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
+                    cgw_in_mask = tun['customer_gateway']['tunnel_inside_address']['network_mask']
                     cgw_in_cidr = tun['customer_gateway']['tunnel_inside_address']['network_cidr']
                 else:
                     cgw_in_addr = ''
@@ -225,16 +235,55 @@ def lambda_handler(event, context):
                             dpdtimeout = ''
                         if 'Phase1EncryptionAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             ikelst =[]
+                            cikeenc = ''
                             for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1EncryptionAlgorithms']:
                                 ph1enc = item['Value']
+                                if ph1enc == 'AES128':
+                                    if cikeenc == '':
+                                        cikeenc = 'aes-cbc-128'
+                                if ph1enc == 'AES256':
+                                    if cikeenc == '':
+                                        cikeenc = 'aes-cbc-256'
+                                if ph1enc == 'AES128-GCM-16':
+                                    if cikeenc == '':
+                                        cikeenc = 'aes-gcm-128'
+                                if ph1enc == 'AES256-GCM-16':
+                                    if cikeenc == '':
+                                        cikeenc = 'aes-gcm-256'
                                 ike = (ph1enc.replace("-","")).lower()
                                 if 'Phase1IntegrityAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
+                                    cikeint = ''
                                     for item2 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1IntegrityAlgorithms']:
                                         ph1int = item2['Value']
+                                        if ph1int == 'SHA-1':
+                                            if cikeint == '':
+                                                cikeint = 'sha1'
+                                            else:
+                                                cikeint = f"{cikeint} sha1"
+                                        if ph1int == 'SHA2-256':
+                                            if cikeint == '':
+                                                cikeint = 'sha256'
+                                            else:
+                                                cikeint = f"{cikeint} sha256"
+                                        if ph1int == 'SHA2-384':
+                                            if cikeint == '':
+                                                cikeint = 'sha384'
+                                            else:
+                                                cikeint = f"{cikeint} sha384"
+                                        if ph1int == 'SHA2-512':
+                                            if cikeint == '':
+                                                cikeint = 'sha512'
+                                            else:
+                                                cikeint = f"{cikeint} sha512"
                                         ike = ike + "-" + (ph1int.replace("-","_")).lower()
                                 if 'Phase1DHGroupNumbers' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
+                                    cph1dh = ''
                                     for item3 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1DHGroupNumbers']:
                                         ph1dh = item3['Value']
+                                        if cph1dh == '':
+                                            cph1dh = ph1dh
+                                        else:
+                                            cph1dh = f"{cph1dh} {ph1dh}"
                                         if ph1dh == 2:
                                             ike = ike + "-modp1024"
                                         if ph1dh == 14:
@@ -263,16 +312,35 @@ def lambda_handler(event, context):
                             ike = ",".join(ikelst)
                         if 'Phase2EncryptionAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             esplst =[]
+                            cespenc = ''
                             for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase2EncryptionAlgorithms']:
                                 ph2enc = item['Value']
+                                if ph2enc == 'AES128':
+                                    cespenc = 'esp-aes'
+                                if ph2enc == 'AES256':
+                                    cespenc = 'esp-aes 256'
+                                if ph2enc == 'AES128-GCM-16':
+                                    cespenc = 'esp-gcm'
+                                if ph2enc == 'AES256-GCM-16':
+                                    cespenc = 'esp-gcm 256'
                                 esp = (ph2enc.replace("-","")).lower()
                                 if 'Phase2IntegrityAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
+                                    cespint = ''
                                     for item2 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase2IntegrityAlgorithms']:
                                         ph2int = item2['Value']
+                                        if ph2int == 'SHA-1':
+                                            cespint = 'esp-sha-hmac'
+                                        if ph2int == 'SHA2-256':
+                                            cespint = 'esp-sha256-hmac'
+                                        if ph2int == 'SHA2-384':
+                                            cespint = 'esp-sha384-hmac'
+                                        if ph2int == 'SHA2-512':
+                                            cespint = 'esp-sha512-hmac'
                                         esp = esp + "-" + (ph2int.replace("-","_")).lower()
                                 if 'Phase2DHGroupNumbers' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                                     for item3 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase2DHGroupNumbers']:
                                         ph2dh = item3['Value']
+                                        cph2dh = f"group{ph2dh}"
                                         if ph2dh == 2:
                                             esp = esp + "-modp1024"
                                         if ph2dh == 5:
@@ -305,6 +373,7 @@ def lambda_handler(event, context):
                             keychlst =[]
                             for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['IkeVersions']:
                                 keych = item['Value']
+                                ckeych = keych
                                 keychlst.append(keych)
                             keych = ",".join(keychlst)
                         if 'StartupAction' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
@@ -427,8 +496,8 @@ def lambda_handler(event, context):
                     cgw_in_cidr = cgw_in_cidr,
                     vgw_in_addr = vgw_in_addr,
                     vgw_in_cidr = vgw_in_cidr,
+                    localnet = localnet,
                     localcidr = localcidr,
-                    remotecidr = remotecidr,
                     ipsec_mode = ipsec_mode,
                     ike_encryption_protocol = ike_encryption_protocol,
                     ike_authentication_protocol = ike_authentication_protocol,
@@ -521,6 +590,49 @@ def lambda_handler(event, context):
                     outputfile.write(output)
                     outputfile.close()
                     logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                # cisco_asr.conf
+                output = templateasr.render(
+                    tnum = tnum,
+                    vpnid = vpnid,
+                    cgw_out_addr = cgw_out_addr,
+                    vgw_out_addr = vgw_out_addr,
+                    cgw_in_addr = cgw_in_addr,
+                    cgw_in_mask = cgw_in_mask,
+                    vgw_in_addr = vgw_in_addr,
+                    localnet = localnet,
+                    localnetmask = localnetmask,
+                    remotecidr = remotecidr,
+                    ike_encryption_protocol = cikeenc,
+                    ike_authentication_protocol = cikeint,
+                    cph1dh = cph1dh,
+                    cph2dh = cph2dh,
+                    ike_pre_shared_key = ike_pre_shared_key,
+                    ike_lifetime = int(ike_lifetime),
+                    ipsec_encryption_protocol = cespenc,
+                    ipsec_authentication_protocol = cespint,
+                    ipsec_lifetime = int(ipsec_lifetime),
+                    dpd_delay = int(dpd_delay),
+                    dpd_retry = int(dpd_retry),
+                    keych = ckeych,
+                    leftsubnet = leftsubnet,
+                    rightsubnet = rightsubnet,
+                    rkfz = rkfz,
+                    rkmg = rkmg,
+                    rplw = rplw,
+                    cgw_bgp_asn = cgw_bgp_asn,
+                    vgw_bgp_asn = vgw_bgp_asn,
+                    cgw_bgp_ht = cgw_bgp_ht,
+                    dpdact = dpdact
+                )
+                output = (output.replace("\n\n","\n")).replace("\n\n","\n")
+                mycfgfile = f"{mylocalfolder}cisco_asr.conf"
+                if tnum == 1:
+                    outputfile = open(mycfgfile, 'w')
+                else:
+                    outputfile = open(mycfgfile, 'a')
+                outputfile.write(output)
+                outputfile.close()
+                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
             # upload files
             # install_strongswan.sh
@@ -548,6 +660,22 @@ def lambda_handler(event, context):
             mycfgfile = f"{mylocalfolder}ipsec.secrets"
             myobj = f"{mys3vpnfolder}ipsec.secrets"
             fileupload(mycfgfile, bucketname, myobj)
+            # cisco_asr.conf
+            mycfgfile = f"{mylocalfolder}cisco_asr.conf"
+            with open(mycfgfile, 'r') as f:
+                lines = f.read()
+            lines = lines.split("\n")                
+            output = []
+            index = 1
+            for line in lines:
+                if line != '':
+                    output.append(f"ios-config-{index}=\"{line}\"\n")
+                    index = index + 1
+            with open(mycfgfile, 'w') as f:
+                f.writelines(output)
+            myobj = f"{mys3vpnfolder}cisco_asr.conf"
+            fileupload(mycfgfile, bucketname, myobj)
+            # generate response
             phyresId = vpnid
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Configuration upload succeed!")

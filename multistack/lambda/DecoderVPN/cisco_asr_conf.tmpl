@@ -1,0 +1,81 @@
+{% if tnum == 1 %}
+no ip domain lookup
+no service call-home
+no ip ssh server authenticate user password
+no ip ssh server authenticate user keyboard
+default ip ssh server authenticate user
+no ip http server
+no ip http secure-server
+crypto ipsec security-association replay window-size {{ rplw }}
+crypto ipsec df-bit clear
+crypto ipsec fragmentation before-encryption
+{% endif %}
+{% if keych == "ikev2" %}
+crypto ikev2 proposal proposal-{{ vpnid }}-{{ tnum }}
+encryption {{ ike_encryption_protocol }}
+prf {{ ike_authentication_protocol }}
+group {{ cph1dh }}
+crypto ikev2 policy policy-{{ vpnid }}-{{ tnum }}
+proposal proposal-{{ vpnid }}-{{ tnum }}
+crypto ikev2 keyring keyring-{{ vpnid }}-{{ tnum }}
+peer {{ vpnid }}-{{ tnum }}
+address {{ vgw_out_addr }}
+pre-shared-key {{ ike_pre_shared_key}}
+crypto ikev2 profile profile-{{ vpnid }}-{{ tnum }}
+match identity remote address {{ vgw_out_addr }} 255.255.255.255
+identity local address {{ cgw_out_addr }}
+authentication remote pre-share
+authentication local pre-share
+keyring local keyring-{{ vpnid }}-{{ tnum }}
+lifetime {{ ike_lifetime }}
+dpd {{ dpd_delay }} {{ dpd_retry }} periodic
+crypto ipsec transform-set ipsec-prop-{{ vpnid }}-{{ tnum }} {{ ipsec_encryption_protocol }} {{ ipsec_authentication_protocol }}
+mode tunnel
+crypto ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
+set security-association lifetime kilobytes disable
+set transform-set ipsec-prop-{{ vpnid }}-{{ tnum }}
+set pfs {{ cph2dh }}
+set ikev2-profile profile-{{ vpnid }}-{{ tnum }}
+{% else %}
+no crypto isakmp default policy
+crypto isakmp policy {{ tnum }}0
+authentication pre-share
+encryption {{ ike_encryption_protocol }}
+hash {{ ike_authentication_protocol }}
+group {{ cph1dh }}
+lifetime {{ ike_lifetime }}
+crypto keyring keyring-{{ vpnid }}-{{ tnum }}
+local-address GigabitEthernet1
+pre-shared-key address {{ vgw_out_addr }} key {{ ike_pre_shared_key}}
+crypto isakmp profile isakmp-{{ vpnid }}-{{ tnum }}
+local-address GigabitEthernet1
+match identity address {{ vgw_out_addr }}
+keyring keyring-{{ vpnid }}-{{ tnum }}
+crypto ipsec transform-set ipsec-prop-{{ vpnid }}-{{ tnum }} {{ ipsec_encryption_protocol }} {{ ipsec_authentication_protocol }}
+mode tunnel
+crypto ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
+set security-association lifetime seconds ike_lifetime
+set security-association lifetime kilobytes disable
+set transform-set ipsec-prop-{{ vpnid }}-{{ tnum }}
+set pfs {{ cph2dh }}
+crypto isakmp keepalive threshold {{ dpd_delay }} retry {{ dpd_retry }}
+{% endif %}
+interface Tunnel{{ tnum }}
+ip address {{ cgw_in_addr }} {{ cgw_in_mask }}
+ip tcp adjust-mss 1379
+tunnel source GigabitEthernet1
+tunnel mode ipsec ipv4
+tunnel destination {{ vgw_out_addr }}
+tunnel protection ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
+ip virtual-reassembly
+router bgp {{ cgw_bgp_asn }}
+bgp log-neighbor-changes
+neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
+neighbor {{ vgw_in_addr }} timers 10 {{ cgw_bgp_ht }} {{ cgw_bgp_ht }}
+address-family ipv4
+{% if localnet != "" %}
+network {{ localnet }} {{ localnetmask }}
+{% endif %}
+neighbor {{ vgw_in_addr }} activate
+neighbor {{ vgw_in_addr }} soft-reconfiguration inbound
+exit-address-family
