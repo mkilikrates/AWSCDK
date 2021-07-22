@@ -13,7 +13,11 @@ crypto ipsec fragmentation before-encryption
 {% if keych == "ikev2" %}
 crypto ikev2 proposal proposal-{{ vpnid }}-{{ tnum }}
 encryption {{ ike_encryption_protocol }}
+{% if cgcm == 1 %}
 prf {{ ike_authentication_protocol }}
+{% else %}
+integrity {{ ike_authentication_protocol }}
+{% endif %}
 group {{ cph1dh }}
 crypto ikev2 policy policy-{{ vpnid }}-{{ tnum }}
 proposal proposal-{{ vpnid }}-{{ tnum }}
@@ -54,11 +58,11 @@ keyring keyring-{{ vpnid }}-{{ tnum }}
 crypto ipsec transform-set ipsec-prop-{{ vpnid }}-{{ tnum }} {{ ipsec_encryption_protocol }} {{ ipsec_authentication_protocol }}
 mode tunnel
 crypto ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
-set security-association lifetime seconds ike_lifetime
+set security-association lifetime seconds {{ ike_lifetime }}
 set security-association lifetime kilobytes disable
 set transform-set ipsec-prop-{{ vpnid }}-{{ tnum }}
 set pfs {{ cph2dh }}
-crypto isakmp keepalive threshold {{ dpd_delay }} retry {{ dpd_retry }}
+crypto isakmp keepalive {{ dpd_delay }} {{ dpd_retry }} periodic
 {% endif %}
 interface Tunnel{{ tnum }}
 ip address {{ cgw_in_addr }} {{ cgw_in_mask }}
@@ -73,8 +77,8 @@ bgp log-neighbor-changes
 neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
 neighbor {{ vgw_in_addr }} timers 10 {{ cgw_bgp_ht }} {{ cgw_bgp_ht }}
 address-family ipv4
-{% if localnet != "" %}
-network {{ localnet }} {{ localnetmask }}
+{% if remotenet != "" %}
+network {{ remotenet }} mask {{ remotenetmask }}
 {% endif %}
 neighbor {{ vgw_in_addr }} activate
 neighbor {{ vgw_in_addr }} soft-reconfiguration inbound

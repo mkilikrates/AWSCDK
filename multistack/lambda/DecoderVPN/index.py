@@ -78,8 +78,13 @@ def lambda_handler(event, context):
     localnetmask = socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << localhostbits)))
     if routetype == 'static':
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
+        remotenet, remotenetbits = remotecidr.split('/')
+        remotehostbits = 32 - int(remotenetbits)
+        remotenetmask = socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << remotehostbits)))
     else:
         remotecidr = ''
+        remotenet = ''
+        remotenetmask = ''
     mys3vpnfolder = f"vpn/{vpnid}/"
     mylocalfolder = '/tmp/'
     requestId = event['RequestId']
@@ -233,22 +238,40 @@ def lambda_handler(event, context):
                             dpdtimeout = vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['DpdTimeoutSeconds']
                         else:
                             dpdtimeout = ''
+                        if 'IkeVersions' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
+                            keychlst =[]
+                            for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['IkeVersions']:
+                                keych = item['Value']
+                                ckeych = keych
+                                keychlst.append(keych)
+                            keych = ",".join(keychlst)
                         if 'Phase1EncryptionAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             ikelst =[]
                             cikeenc = ''
+                            cgcm = ''
                             for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1EncryptionAlgorithms']:
                                 ph1enc = item['Value']
                                 if ph1enc == 'AES128':
-                                    if cikeenc == '':
+                                    if keych == 'ikev2':
                                         cikeenc = 'aes-cbc-128'
+                                    else:
+                                        cikeenc = 'aes 128'
                                 if ph1enc == 'AES256':
-                                    if cikeenc == '':
+                                    if keych == 'ikev2':
                                         cikeenc = 'aes-cbc-256'
+                                    else:
+                                        cikeenc = 'aes 256'
                                 if ph1enc == 'AES128-GCM-16':
-                                    if cikeenc == '':
+                                    cgcm = 1
+                                    if keych == 'ikev2':
                                         cikeenc = 'aes-gcm-128'
+                                    else:
+                                        cikeenc = 'aes 128'
                                 if ph1enc == 'AES256-GCM-16':
-                                    if cikeenc == '':
+                                    cgcm = 1
+                                    if keych == 'ikev2':
+                                        cikeenc = 'aes 256'
+                                    else:
                                         cikeenc = 'aes-gcm-256'
                                 ike = (ph1enc.replace("-","")).lower()
                                 if 'Phase1IntegrityAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
@@ -321,8 +344,10 @@ def lambda_handler(event, context):
                                     cespenc = 'esp-aes 256'
                                 if ph2enc == 'AES128-GCM-16':
                                     cespenc = 'esp-gcm'
+                                    cgcm = 1
                                 if ph2enc == 'AES256-GCM-16':
                                     cespenc = 'esp-gcm 256'
+                                    cgcm = 1
                                 esp = (ph2enc.replace("-","")).lower()
                                 if 'Phase2IntegrityAlgorithms' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                                     cespint = ''
@@ -369,13 +394,6 @@ def lambda_handler(event, context):
                                             esp = esp + "-modp2048s256"
                                 esplst.append(esp)
                             esp = ",".join(esplst)
-                        if 'IkeVersions' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
-                            keychlst =[]
-                            for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['IkeVersions']:
-                                keych = item['Value']
-                                ckeych = keych
-                                keychlst.append(keych)
-                            keych = ",".join(keychlst)
                         if 'StartupAction' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             startact = vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['StartupAction']
                         else:
@@ -496,7 +514,6 @@ def lambda_handler(event, context):
                     cgw_in_cidr = cgw_in_cidr,
                     vgw_in_addr = vgw_in_addr,
                     vgw_in_cidr = vgw_in_cidr,
-                    localnet = localnet,
                     localcidr = localcidr,
                     ipsec_mode = ipsec_mode,
                     ike_encryption_protocol = ike_encryption_protocol,
@@ -601,6 +618,9 @@ def lambda_handler(event, context):
                     vgw_in_addr = vgw_in_addr,
                     localnet = localnet,
                     localnetmask = localnetmask,
+                    remotenet = remotenet,
+                    remotenetmask = remotenetmask,
+                    cgcm = cgcm,
                     remotecidr = remotecidr,
                     ike_encryption_protocol = cikeenc,
                     ike_authentication_protocol = cikeint,
