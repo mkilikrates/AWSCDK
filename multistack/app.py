@@ -77,7 +77,7 @@ GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', re
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv, res = 'bastionsimplepriv', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
 EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #EIPStack.add_dependency(BationStack2)
-S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpndepl', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = [])
+S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = '', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = [])
 S2SVPNStack.add_dependency(GatewayStack)
 #VPCStack3 = VPC(app, "MY-VPC3", env=myenv, res = 'vpcpub', cidrid = 2, natgw = 0, maxaz = 1, ipstack = ipstack)
 #VPCStack3.add_dependency(S2SVPNStack)

@@ -292,9 +292,9 @@ class s2svpn(core.Stack):
                         )
             self.vpnid = core.CfnOutput(
                 self,
-                f"{construct_id}:myvpn",
+                f"{construct_id}:VPNid",
                 value=self.vpn.ref,
-                export_name=f"{construct_id}:myvpn",
+                export_name=f"{construct_id}:VPNid",
             )
         else:
             # Get configuration
@@ -479,82 +479,82 @@ class s2svpn(core.Stack):
                 value=self.mycustomvpn.get_att_string("VPNid"),
                 export_name=f"{construct_id}:VPNid"
             )
-        if gwtype == 'tgw':
-            if tgwrtfunct =='':
-                # create Police for lambda function
-                self.tgwvpnattachlambdapolicy = iam.PolicyStatement(
-                    actions=[
-                        "ec2:DescribeTransitGatewayAttachments",
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:DescribeLogGroups",
-                        "logs:DescribeLogStreams",
-                        "logs:PutLogEvents"
-                    ],
-                    resources=["*"],
-                    effect=iam.Effect.ALLOW
-                )
-                self.tgwvpnattachlambdarole = iam.Role(
-                    self,
-                    "tgwvpnattachLambdaRole",
-                    assumed_by=iam.ServicePrincipal(
-                        'lambda.amazonaws.com'
-                    ),
-                    description=(
-                        'Role for Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation'
+            if gwtype == 'tgw':
+                if tgwrtfunct =='':
+                    # create Police for lambda function
+                    self.tgwvpnattachlambdapolicy = iam.PolicyStatement(
+                        actions=[
+                            "ec2:DescribeTransitGatewayAttachments",
+                            "logs:CreateLogGroup",
+                            "logs:CreateLogStream",
+                            "logs:DescribeLogGroups",
+                            "logs:DescribeLogStreams",
+                            "logs:PutLogEvents"
+                        ],
+                        resources=["*"],
+                        effect=iam.Effect.ALLOW
                     )
-                )
-                self.tgwvpnattachlambdarole.add_to_policy(self.tgwvpnattachlambdapolicy)
-                # Create Lambda Function
-                self.tgwvpnattachlambda = lpython.PythonFunction(
-                    self,
-                    f"{construct_id}:tgwvpnattachlambda",
-                    handler="lambda_handler",
-                    timeout=core.Duration.seconds(90),
-                    runtime=lambda_.Runtime.PYTHON_3_8,
-                    description="Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation",
-                    entry="lambda/GetVpnTgwAttach/",
-                    role=(self.tgwvpnattachlambdarole),
-                    log_retention=log.RetentionDays.ONE_WEEK
-                )
-                core.CfnOutput(
-                self,
-                f"{construct_id}:tgwvpnattachlambdaArn",
-                value=self.tgwvpnattachlambda.function_arn,
-                export_name=f"{construct_id}:tgwvpnattachlambdaArn"
-                )
-                tgwrtfunct = self.tgwvpnattachlambda.function_arn
-            self.tgwvpnattach = core.CfnCustomResource(
-                self,
-                f"{construct_id}:tgwvpnattach",
-                service_token=tgwrtfunct
-            )
-            self.tgwvpnattach.add_property_override("VPN", self.mycustomvpn.get_att_string("VPNid"))
-            # associate vpn with route table
-            vpnname = resmap['Mappings']['Resources'][res]['NAME']
-            if tgwrt !='':
-                ec2.CfnTransitGatewayRouteTableAssociation(
-                    self,
-                    id=f"tgwrt-assvpn-{vpnname}",
-                    transit_gateway_attachment_id=self.tgwvpnattach.get_att("TransitGatewayAttachmentId").to_string(),
-                    transit_gateway_route_table_id=tgwrt
-                )
-            elif self.tgwvpnattach.get_att("TransitGatewayRouteTableId").to_string() != "Not Found":
-                tgwrt = self.tgwvpnattach.get_att("TransitGatewayRouteTableId").to_string()
-            if tgwprop !='':
-                ec2.CfnTransitGatewayRouteTablePropagation(
-                    self,
-                    id=f"tgwrt-propvpn-{vpnname}",
-                    transit_gateway_attachment_id=self.tgwvpnattach.get_att("TransitGatewayAttachmentId").to_string(),
-                    transit_gateway_route_table_id=tgwprop
-                )
-            if route == 'static':
-                for rt in staticrt:
-                    ec2.CfnTransitGatewayRoute(
+                    self.tgwvpnattachlambdarole = iam.Role(
                         self,
-                        f"tgw-{region}-tgwrt-vpn-{self.vpn.ref}",
-                        destination_cidr_block=rt,
+                        "tgwvpnattachLambdaRole",
+                        assumed_by=iam.ServicePrincipal(
+                            'lambda.amazonaws.com'
+                        ),
+                        description=(
+                            'Role for Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation'
+                        )
+                    )
+                    self.tgwvpnattachlambdarole.add_to_policy(self.tgwvpnattachlambdapolicy)
+                    # Create Lambda Function
+                    self.tgwvpnattachlambda = lpython.PythonFunction(
+                        self,
+                        f"{construct_id}:tgwvpnattachlambda",
+                        handler="lambda_handler",
+                        timeout=core.Duration.seconds(90),
+                        runtime=lambda_.Runtime.PYTHON_3_8,
+                        description="Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation",
+                        entry="lambda/GetVpnTgwAttach/",
+                        role=(self.tgwvpnattachlambdarole),
+                        log_retention=log.RetentionDays.ONE_WEEK
+                    )
+                    core.CfnOutput(
+                    self,
+                    f"{construct_id}:tgwvpnattachlambdaArn",
+                    value=self.tgwvpnattachlambda.function_arn,
+                    export_name=f"{construct_id}:tgwvpnattachlambdaArn"
+                    )
+                    tgwrtfunct = self.tgwvpnattachlambda.function_arn
+                self.tgwvpnattach = core.CfnCustomResource(
+                    self,
+                    f"{construct_id}:tgwvpnattach",
+                    service_token=tgwrtfunct
+                )
+                self.tgwvpnattach.add_property_override("VPN", self.mycustomvpn.get_att_string("VPNid"))
+                # associate vpn with route table
+                vpnname = resmap['Mappings']['Resources'][res]['NAME']
+                if tgwrt !='':
+                    ec2.CfnTransitGatewayRouteTableAssociation(
+                        self,
+                        id=f"tgwrt-assvpn-{vpnname}",
                         transit_gateway_attachment_id=self.tgwvpnattach.get_att("TransitGatewayAttachmentId").to_string(),
                         transit_gateway_route_table_id=tgwrt
                     )
+                elif self.tgwvpnattach.get_att("TransitGatewayRouteTableId").to_string() != "Not Found":
+                    tgwrt = self.tgwvpnattach.get_att("TransitGatewayRouteTableId").to_string()
+                if tgwprop !='':
+                    ec2.CfnTransitGatewayRouteTablePropagation(
+                        self,
+                        id=f"tgwrt-propvpn-{vpnname}",
+                        transit_gateway_attachment_id=self.tgwvpnattach.get_att("TransitGatewayAttachmentId").to_string(),
+                        transit_gateway_route_table_id=tgwprop
+                    )
+                if route == 'static':
+                    for rt in staticrt:
+                        ec2.CfnTransitGatewayRoute(
+                            self,
+                            f"tgw-{region}-tgwrt-vpn-{self.vpn.ref}",
+                            destination_cidr_block=rt,
+                            transit_gateway_attachment_id=self.tgwvpnattach.get_att("TransitGatewayAttachmentId").to_string(),
+                            transit_gateway_route_table_id=tgwrt
+                        )
 

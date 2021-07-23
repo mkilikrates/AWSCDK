@@ -229,7 +229,7 @@ def lambda_handler(event, context):
                         if 'ReplayWindowSize' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             rplw = vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['ReplayWindowSize']
                         else:
-                            rplw = ''
+                            rplw = 1024
                         if 'DpdTimeoutAction' in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]:
                             dpdact = vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['DpdTimeoutAction']
                         else:
@@ -404,9 +404,17 @@ def lambda_handler(event, context):
                         ike = ''
                         esp = ''
                         rkfz = ''
-                        rplw = ''
+                        rplw = 1024
                         rkmg = ''
                         dpdact = ''
+                        cgcm = ''
+                        ckeych = 'ikev1'
+                        cikeenc = 'aes 128'
+                        cikeint = 'sha'
+                        cph1dh = 2
+                        cph2dh = 'group2'
+                        cespenc = 'esp-aes'
+                        cespint = 'esp-sha-hmac'
                 # generate installation files
                 # bash file to install openswan
                 if routetype == 'bgp':
