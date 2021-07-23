@@ -58,7 +58,7 @@ keyring keyring-{{ vpnid }}-{{ tnum }}
 crypto ipsec transform-set ipsec-prop-{{ vpnid }}-{{ tnum }} {{ ipsec_encryption_protocol }} {{ ipsec_authentication_protocol }}
 mode tunnel
 crypto ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
-set security-association lifetime seconds {{ ike_lifetime }}
+set security-association lifetime seconds {{ ipsec_lifetime }}
 set security-association lifetime kilobytes disable
 set transform-set ipsec-prop-{{ vpnid }}-{{ tnum }}
 set pfs {{ cph2dh }}
