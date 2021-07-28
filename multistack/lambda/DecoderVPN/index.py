@@ -73,18 +73,43 @@ def lambda_handler(event, context):
     bucketname = event['ResourceProperties']['0']['S3']
     vpnregion = event['ResourceProperties']['0']['Region']
     localcidr = event['ResourceProperties']['0']['LocalCidr']
-    localnet, localnetbits = localcidr.split('/')
-    localhostbits = 32 - int(localnetbits)
-    localnetmask = socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << localhostbits)))
+    localnet = []
+    localnetmask = []
+    if type(localcidr) == list:
+        for each in localcidr:
+            net, bits = each.split('/')
+            hostbits = 32 - int(bits)
+            localnet.append(net)
+            localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
+            localnetsize = len(localnet)
+    else:
+        net, bits = localcidr.split('/')
+        hostbits = 32 - int(bits)
+        localnet.append(net)
+        localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
+        localnetsize = 1
     if routetype == 'static':
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
-        remotenet, remotenetbits = remotecidr.split('/')
-        remotehostbits = 32 - int(remotenetbits)
-        remotenetmask = socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << remotehostbits)))
+        remotenet = []
+        remotenetmask = []
+        if type(remotecidr) == list:
+            for each in remotecidr:
+                net, bits = each.split('/')
+                hostbits = 32 - int(bits)
+                remotenet.append(net)
+                remotenetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
+                remotenetsize = len(remotenet)
+        else:
+            net, bits = remotecidr.split('/')
+            hostbits = 32 - int(bits)
+            remotenet.append(net)
+            remotenetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
+            remotenetsize = 1
     else:
         remotecidr = ''
         remotenet = ''
         remotenetmask = ''
+        remotenetsize = ''
     mys3vpnfolder = f"vpn/{vpnid}/"
     mylocalfolder = '/tmp/'
     requestId = event['RequestId']
@@ -252,24 +277,24 @@ def lambda_handler(event, context):
                             for item in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1EncryptionAlgorithms']:
                                 ph1enc = item['Value']
                                 if ph1enc == 'AES128':
-                                    if keych == 'ikev2':
+                                    if ckeych == 'ikev2':
                                         cikeenc = 'aes-cbc-128'
                                     else:
                                         cikeenc = 'aes 128'
                                 if ph1enc == 'AES256':
-                                    if keych == 'ikev2':
+                                    if ckeych == 'ikev2':
                                         cikeenc = 'aes-cbc-256'
                                     else:
                                         cikeenc = 'aes 256'
                                 if ph1enc == 'AES128-GCM-16':
                                     cgcm = 1
-                                    if keych == 'ikev2':
+                                    if ckeych == 'ikev2':
                                         cikeenc = 'aes-gcm-128'
                                     else:
                                         cikeenc = 'aes 128'
                                 if ph1enc == 'AES256-GCM-16':
                                     cgcm = 1
-                                    if keych == 'ikev2':
+                                    if ckeych == 'ikev2':
                                         cikeenc = 'aes 256'
                                     else:
                                         cikeenc = 'aes-gcm-256'
@@ -278,7 +303,7 @@ def lambda_handler(event, context):
                                     cikeint = ''
                                     for item2 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase1IntegrityAlgorithms']:
                                         ph1int = item2['Value']
-                                        if ph1int == 'SHA-1':
+                                        if ph1int == 'SHA1':
                                             if cikeint == '':
                                                 cikeint = 'sha1'
                                             else:
@@ -353,7 +378,7 @@ def lambda_handler(event, context):
                                     cespint = ''
                                     for item2 in vpn['VpnConnections'][0]['Options']['TunnelOptions'][index]['Phase2IntegrityAlgorithms']:
                                         ph2int = item2['Value']
-                                        if ph2int == 'SHA-1':
+                                        if ph2int == 'SHA1':
                                             cespint = 'esp-sha-hmac'
                                         if ph2int == 'SHA2-256':
                                             cespint = 'esp-sha256-hmac'
@@ -619,6 +644,7 @@ def lambda_handler(event, context):
                 output = templateasr.render(
                     tnum = tnum,
                     vpnid = vpnid,
+                    routetype = routetype,
                     cgw_out_addr = cgw_out_addr,
                     vgw_out_addr = vgw_out_addr,
                     cgw_in_addr = cgw_in_addr,
@@ -626,8 +652,10 @@ def lambda_handler(event, context):
                     vgw_in_addr = vgw_in_addr,
                     localnet = localnet,
                     localnetmask = localnetmask,
+                    localnetsize = localnetsize,
                     remotenet = remotenet,
                     remotenetmask = remotenetmask,
+                    remotenetsize = remotenetsize,
                     cgcm = cgcm,
                     remotecidr = remotecidr,
                     ike_encryption_protocol = cikeenc,

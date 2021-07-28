@@ -30,11 +30,11 @@ from multistack.eksctrl import (
     eksNGINXMNF as eksnginx
     )
 from multistack.cloudfront import CloudFrontStack as cf
-remoteregion = 'eu-west-2'
+remoteregion = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"]))
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
-route = 'bgp'
-gwtype = 'tgw'
+route = 'static'
+gwtype = 'vgw'
 ipstack = 'Ipv4'
 app = core.App()
 VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
@@ -46,6 +46,7 @@ VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, max
 # R53RsvStack.add_dependency(target=ADStack)
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpc', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
 GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+GatewayStack.add_dependency(target=VPCStack)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 #InstanceStack = instance(app, "My-instance", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', eipall = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #InstanceStack.add_dependency(target=NetFWStack)
@@ -77,10 +78,10 @@ GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', re
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv, res = 'bastionsimplepriv', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
 EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #EIPStack.add_dependency(BationStack2)
-S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = '', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = [])
+S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncase', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = ["10.16.0.0/24", "10.15.15.0/24", "10.25.1.0/24", "10.15.1.0/24", "172.31.0.0/16"])
 S2SVPNStack.add_dependency(GatewayStack)
 #VPCStack3 = VPC(app, "MY-VPC3", env=myenv, res = 'vpcpub', cidrid = 2, natgw = 0, maxaz = 1, ipstack = ipstack)
 #VPCStack3.add_dependency(S2SVPNStack)
-S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = core.Fn.import_value(f"{S2SVPNStack.stack_name}:VPNid"), vpnregion = '', funct ='', res = 'vpnsrvstrswbgp', vpc = VPCStack.vpc)
+S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv, route = route, vpnid = core.Fn.import_value(f"{S2SVPNStack.stack_name}:VPNid"), vpnregion = '', funct ='', res = 'vpnsrvcase', vpc = VPCStack.vpc)
 S3VPNStack.add_dependency(S2SVPNStack)
 app.synth()

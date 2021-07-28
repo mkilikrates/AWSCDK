@@ -72,14 +72,23 @@ tunnel mode ipsec ipv4
 tunnel destination {{ vgw_out_addr }}
 tunnel protection ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
 ip virtual-reassembly
+{% if localnet != "" %}
+{% for i in range(1, localnetsize) %}
+ip route {{ localnet[i] }} {{ localnetmask[i] }} GigabitEthernet1 dhcp
+{% endfor %}
+{% endif %}
+{% if routetype == "bgp" %}
 router bgp {{ cgw_bgp_asn }}
 bgp log-neighbor-changes
 neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
 neighbor {{ vgw_in_addr }} timers 10 {{ cgw_bgp_ht }} {{ cgw_bgp_ht }}
 address-family ipv4
 {% if remotenet != "" %}
-network {{ remotenet }} mask {{ remotenetmask }}
+{% for i in range(1, remotenetsize) %}
+network {{ remotenet[i] }} mask {{ remotenetmask[i] }}
+{% endfor %}
 {% endif %}
 neighbor {{ vgw_in_addr }} activate
 neighbor {{ vgw_in_addr }} soft-reconfiguration inbound
 exit-address-family
+{% endif %}
