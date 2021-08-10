@@ -41,8 +41,8 @@ gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpcmulticidr', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
-GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
-GatewayStack.add_dependency(target=VPCStack)
+#GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+#GatewayStack.add_dependency(target=VPCStack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #FlowLogsStack.add_dependency(target=VPCStack)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
