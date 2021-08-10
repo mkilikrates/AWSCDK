@@ -37,10 +37,15 @@ myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envir
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 
 route = 'static'
-gwtype = 'vgw'
+gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
+VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpcmulticidr', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
+GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+GatewayStack.add_dependency(target=VPCStack)
+VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 2, maxaz = 2, ipstack = ipstack)
+GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gwid, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+GatewayStack2.add_dependency(target=VPCStack2)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #FlowLogsStack.add_dependency(target=VPCStack)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
@@ -48,8 +53,6 @@ VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, max
 #R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
 # R53RsvStack.add_dependency(target=ADStack)
 #NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpc', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
-#GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
-#GatewayStack.add_dependency(target=VPCStack)
 #VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 #InstanceStack = instance(app, "My-instance", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', eipall = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #InstanceStack.add_dependency(target=NetFWStack)

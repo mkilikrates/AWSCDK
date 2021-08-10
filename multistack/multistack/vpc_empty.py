@@ -140,6 +140,25 @@ class VPC(core.Stack):
             nat_gateways=self.natgw,
             subnet_configuration=self.sub
         )
+        if 'MULTICIDR' in resmap['Mappings']['Resources'][res]:
+            cidrs = resmap['Mappings']['Resources'][res]['MULTICIDR']
+            if type(cidrs) == list:
+                index = 1
+                for i in cidrs:
+                    ec2.CfnVPCCidrBlock(
+                        self,
+                        f"cidr-{index}",
+                        vpc_id = self.vpc.vpc_id,
+                        cidr_block = i,
+                    )
+                    index = index + 1
+            else:
+                ec2.CfnVPCCidrBlock(
+                    self,
+                    "cidr",
+                    vpc_id = self.vpc.vpc_id,
+                    cidr_block = cidrs,
+                )
         if self.ipstack != 'Ipv4':
             # ipv6 on this vpc
             self.ipv6_block = ec2.CfnVPCCidrBlock(self, "Ipv6",
