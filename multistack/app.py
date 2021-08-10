@@ -44,7 +44,7 @@ VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpcmulticidr', cidrid = 0, natgw
 GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
 GatewayStack.add_dependency(target=VPCStack)
 VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 2, maxaz = 2, ipstack = ipstack)
-GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gwid, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+GatewayStack2 = mygw(app, "MY-GATEWAY2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gw.ref, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
 GatewayStack2.add_dependency(target=VPCStack2)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #FlowLogsStack.add_dependency(target=VPCStack)
