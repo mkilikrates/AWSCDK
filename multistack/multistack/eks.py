@@ -25,6 +25,8 @@ class EksStack(core.Stack):
         self.ipstack = ipstack
         if allowsg != '':
             self.allowsg = allowsg
+        else:
+            self.allowsg = ''
         if preflst == True:
             # get prefix list from file to allow traffic from the office
             self.map = core.CfnMapping(

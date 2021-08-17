@@ -46,12 +46,13 @@ class alb(core.Stack):
             private_zone=False
         )
         # generate public certificate
-        self.cert = acm.Certificate(
-            self,
-            f"{construct_id}:Certificate",
-            domain_name=f"{appname}.{appdomain}",
-            validation=acm.CertificateValidation.from_dns(self.hz)
-        )
+        if reslbport == 443:
+            self.cert = acm.Certificate(
+                self,
+                f"{construct_id}:Certificate",
+                domain_name=f"{appname}.{appdomain}",
+                validation=acm.CertificateValidation.from_dns(self.hz)
+            )
         if elbface == True:
             if self.ipstack == 'Ipv6':
                 lbstack = elb.IpAddressType.DUAL_STACK
@@ -127,19 +128,26 @@ class alb(core.Stack):
                 value=self.elb.load_balancer_dns_name
             )
             # configure listener
-            self.elblistnrs = self.elb.add_listener(
-                f"{construct_id}:Listener_https",
-                port=reslbport,
-                protocol=elb.ApplicationProtocol.HTTPS,
-                certificate_arns=[self.cert.certificate_arn]
-            )
-            #redir http traffic to https
-            self.elb.add_redirect(
-                source_port=80,
-                source_protocol=elb.ApplicationProtocol.HTTP,
-                target_port=reslbport,
-                target_protocol=elb.ApplicationProtocol.HTTPS
-            )
+            if reslbport == 443:
+                self.elblistnrs = self.elb.add_listener(
+                    f"{construct_id}:Listener_https",
+                    port=reslbport,
+                    protocol=elb.ApplicationProtocol.HTTPS,
+                    certificate_arns=[self.cert.certificate_arn]
+                )
+                #redir http traffic to https
+                self.elb.add_redirect(
+                    source_port=80,
+                    source_protocol=elb.ApplicationProtocol.HTTP,
+                    target_port=reslbport,
+                    target_protocol=elb.ApplicationProtocol.HTTPS
+                )
+            else:
+                self.elblistnrs = self.elb.add_listener(
+                    f"{construct_id}:Listener_http",
+                    port=reslbport,
+                    protocol=elb.ApplicationProtocol.HTTP,
+                )
             # allow ingress access 
             if allowall == True:
                 self.elblistnrs.connections.allow_default_port_from(
@@ -193,12 +201,19 @@ class alb(core.Stack):
                 value=self.elb.load_balancer_dns_name
             )
             # configure listener
-            self.elblistnrs = self.elb.add_listener(
-                f"{construct_id}:Listener_https",
-                port=reslbport,
-                protocol=elb.Protocol('TLS'),
-                certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
-            )
+            if reslbport == 443:
+                self.elblistnrs = self.elb.add_listener(
+                    f"{construct_id}:Listener_https",
+                    port=reslbport,
+                    protocol=elb.Protocol('TLS'),
+                    certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
+                )
+            else:
+                self.elblistnrs = self.elb.add_listener(
+                    f"{construct_id}:Listener_tcp",
+                    port=reslbport,
+                    protocol=elb.Protocol('TCP'),
+                )
             # allow egress access to target
             self.tgrp = self.elblistnrs.add_targets(
                 f"{construct_id}:My Default Fleet",

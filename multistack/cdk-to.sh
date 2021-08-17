@@ -10,7 +10,7 @@ if [[ $# -ge 2 ]]; then
         export CDK_DEPLOY_REGION=$2
 	creds=$(mktemp -d)/creds.json
 	echo "assuming role ${ASSUME_ROLE_ARN} with session-name ${SESSION_NAME}"
-        aws sts assume-role --role-arn $ASSUME_ROLE_ARN --role-session-name $SESSION_NAME > $creds
+        aws sts assume-role --role-arn $ASSUME_ROLE_ARN --duration-seconds 28800 --role-session-name $SESSION_NAME > $creds
         export AWS_ACCESS_KEY_ID=$(cat ${creds} | grep "AccessKeyId" | cut -d '"' -f 4)
         export AWS_SECRET_ACCESS_KEY=$(cat ${creds} | grep "SecretAccessKey" | cut -d '"' -f 4)
         export AWS_SESSION_TOKEN=$(cat ${creds} | grep "SessionToken" | cut -d '"' -f 4)

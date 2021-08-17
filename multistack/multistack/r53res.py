@@ -81,14 +81,17 @@ class rslv(core.Stack):
         if 'ISG' in resmap['Mappings']['Resources'][res]:
             for rule in resmap['Mappings']['Resources'][res]['ISG']:
                 if 'SRC' in rule:
-                    if rule['SRC'] == 'VPC':
+                    src = rule['SRC']
+                    if src == 'VPC':
                         src = self.vpc.vpc_cidr_block
-                    else:
-                        src = rule['SRC']
+                    elif src == 'Any':
+                        src = "0.0.0.0/0"
                     peer = ec2.Peer.ipv4(cidr_ip=src)
                 if 'SRCv6' in rule:
                     if rule['SRCv6'] == 'VPC':
                         src = core.Fn.select(0, self.vpc.vpc_ipv6_cidr_blocks)
+                    elif rule['SRCv6'] == 'Any':
+                        src = "::/0"
                     else:
                         src = rule['SRCv6']
                     peer = ec2.Peer.ipv6(cidr_ip=src)
