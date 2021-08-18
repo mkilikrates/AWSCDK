@@ -10,6 +10,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_lambda_python as lpython,
+    aws_ssm as ssm,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -296,6 +297,30 @@ class s2svpn(core.Stack):
                 value=self.vpn.ref,
                 export_name=f"{construct_id}:VPNid",
             )
+            ssm.StringParameter(
+                self,
+                "SSMVPNid",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}",
+                description="VPNid",
+                string_value=self.vpn.ref
+            )
+            ssm.StringParameter(
+                self,
+                "SSMCGWIP",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}/CGWIP",
+                description="CGWIP",
+                string_value=cgwaddr.get_att_string("PublicIp")
+            )
+            ssm.StringParameter(
+                self,
+                "SSMEIPAllocid",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}/EIPAllocid",
+                description="EIPAllocid",
+                string_value=cgwaddr.get_att_string("AllocationId")
+            )
         else:
             # Get configuration
             myvpnopts = {}
@@ -479,6 +504,31 @@ class s2svpn(core.Stack):
                 value=self.mycustomvpn.get_att_string("VPNid"),
                 export_name=f"{construct_id}:VPNid"
             )
+            ssm.StringParameter(
+                self,
+                "SSMVPNid",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}",
+                description="VPNid",
+                string_value=self.mycustomvpn.get_att_string("VPNid")
+            )
+            ssm.StringParameter(
+                self,
+                "SSMCGWIP",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}/CGWIP",
+                description="CGWIP",
+                string_value=cgwaddr.get_att_string("PublicIp")
+            )
+            ssm.StringParameter(
+                self,
+                "SSMEIPAllocid",
+                type=ssm.ParameterType("STRING"),
+                parameter_name=f"/{region}/vpn/{self.stack_name}/EIPAllocid",
+                description="EIPAllocid",
+                string_value=cgwaddr.get_att_string("AllocationId")
+            )
+
             if gwtype == 'tgw':
                 if tgwrtfunct =='':
                     # create Police for lambda function

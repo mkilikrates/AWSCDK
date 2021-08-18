@@ -14,6 +14,14 @@ region = os.environ['AWS_REGION']
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
+ssm = boto3.client('ssm')
+
+def putparameter(keylist):
+    try:
+        response = ssm.put_parameter(**keylist)
+        return response
+    except Exception as e:
+        logger.info('SSM STORE: Put Parameter Error: {}'.format(e))
 
 def fileupload(mycfgfile, bucketname, myobj):
     try:
@@ -23,7 +31,6 @@ def fileupload(mycfgfile, bucketname, myobj):
             return response
     except Exception as e:
         logger.info('S3: Creation of folder Error: {}'.format(e))
-
 
 def createfolder(bucketname, folder):
     # create config folder to vpn files
@@ -73,6 +80,8 @@ def lambda_handler(event, context):
     bucketname = event['ResourceProperties']['0']['S3']
     vpnregion = event['ResourceProperties']['0']['Region']
     localcidr = event['ResourceProperties']['0']['LocalCidr']
+    vpnstackname = event['ResourceProperties']['0']['StackName']
+    ec2type = event['ResourceProperties']['0']['ApplianceKind']
     localnet = []
     localnetmask = []
     if type(localcidr) == list:
@@ -88,6 +97,7 @@ def lambda_handler(event, context):
         localnet.append(net)
         localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
         localnetsize = 1
+    logger.info(f"Debugging : localnet={localnet}, localnetmask={localnetmask}, localnetsize={localnetsize}")
     if routetype == 'static':
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
         remotenet = []
@@ -181,6 +191,16 @@ def lambda_handler(event, context):
                 # get variables
                 logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
+                keylist = {}
+                keylist['Name'] = f"/{vpnregion}/vpn/{vpnstackname}/VGW-{tnum}"
+                keylist['Description'] = f"VGW-{tnum} Endpoint Address"
+                keylist['Value'] = cgw_out_addr
+                keylist['Type'] = 'String'
+                keylist['Overwrite'] = True
+                keylist['Tier'] = 'Standard'
+                ssmput = putparameter(keylist)
+                if ssmput['ResponseMetadata']['HTTPStatusCode'] != '200':
+                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
                 if 'tunnel_inside_address' in tun['customer_gateway']:
                     cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                     cgw_in_mask = tun['customer_gateway']['tunnel_inside_address']['network_mask']
@@ -731,6 +751,19 @@ def lambda_handler(event, context):
                 f.writelines(output)
             myobj = f"{mys3vpnfolder}cisco_asr.conf"
             fileupload(mycfgfile, bucketname, myobj)
+            if ec2type == 'CSR':
+                with open(mycfgfile, 'r') as f:
+                    lines = f.read()
+                keylist = {}
+                keylist['Name'] = f"/{vpnregion}/vpn/{vpnstackname}/CSR-cfg"
+                keylist['Description'] = f"Cisco CSR VGW Endpoint User-Data"
+                keylist['Value'] = lines
+                keylist['Type'] = 'String'
+                keylist['Overwrite'] = True
+                keylist['Tier'] = 'Advanced'
+                ssmput = putparameter(keylist)
+                if ssmput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
             # generate response
             phyresId = vpnid
             response["Status"] = "SUCCESS"

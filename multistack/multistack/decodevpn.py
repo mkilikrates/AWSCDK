@@ -25,6 +25,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_logs as log,
     aws_ec2 as ec2,
+    aws_ssm as ssm,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -35,18 +36,29 @@ with open(resconf) as resfile:
 
 class S2SVPNS3(core.Stack):
 
-    def __init__(self, scope: core.Construct, construct_id: str, route, vpnregion, funct, res, vpnid = str, vpc = ec2.Vpc, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, route, remoteregion, funct, res, vpnstackname = str, vpnid = str, vpc = ec2.Vpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # The code that defines your stack goes here
         # get imported objects
         self.vpc = vpc
-        self.vpnid = vpnid
+        if remoteregion == '':
+            remoteregion = region
+        if vpnid == '':
+            self.vpnid = ssm.StringParameter.from_string_parameter_attributes(
+                self,
+                'SSMVPNid',
+                parameter_name=f"/{remoteregion}/vpn/{vpnstackname}"
+            ).string_value
+        else:
+            self.vpnid = vpnid
         self.route = route
-        if vpnregion == '':
-            vpnregion = region
         res = res
         self.bucketname = resmap['Mappings']['Resources'][res]['S3']
+        if 'TYPE' in resmap['Mappings']['Resources'][res]:
+            ec2type = resmap['Mappings']['Resources'][res]['TYPE']
+        else:
+            ec2type = 'EC2'
         if funct =='':
             # create Police for lambda function
             self.mylambdapolicy = iam.PolicyStatement(
@@ -66,12 +78,20 @@ class S2SVPNS3(core.Stack):
                     "s3:GetObject",
                     "s3:ListBucket",
                     "s3:DeleteObject",
-                    "s3:PutObject"
+                    "s3:PutObject",
+                    "ssm:PutParameter"
                 ],
                 resources=[
                     f"arn:aws:s3:::{self.bucketname}",
                     f"arn:aws:s3:::{self.bucketname}/vpn/*"
                 ],
+                effect=iam.Effect.ALLOW
+            )
+            self.mylambdaSSMpolicy = iam.PolicyStatement(
+                actions=[
+                    "ssm:PutParameter"
+                ],
+                resources=["*"],
                 effect=iam.Effect.ALLOW
             )
             self.mylambdarole = iam.Role(
@@ -86,6 +106,7 @@ class S2SVPNS3(core.Stack):
             )
             self.mylambdarole.add_to_policy(self.mylambdapolicy)
             self.mylambdarole.add_to_policy(self.mylambdaS3policy)
+            self.mylambdarole.add_to_policy(self.mylambdaSSMpolicy)
             # Create Lambda Function
             self.mylambda = lpython.PythonFunction(
                 self,
@@ -114,10 +135,12 @@ class S2SVPNS3(core.Stack):
                     {
                         "VPN" : self.vpnid,
                         "Route" : self.route,
-                        "Region" : vpnregion,
+                        "Region" : remoteregion,
                         "RemoteCidr" : self.vpnrrt,
                         "LocalCidr" : self.vpnlrt,
+                        "StackName" : vpnstackname,
                         "S3" : self.bucketname,
+                        "ApplianceKind" : ec2type
                     }
                 ]
             )
@@ -130,9 +153,11 @@ class S2SVPNS3(core.Stack):
                     {
                         "VPN" : self.vpnid,
                         "Route" : self.route,
-                        "Region" : vpnregion,
+                        "Region" : remoteregion,
                         "S3" : self.bucketname,
+                        "StackName" : vpnstackname,
                         "LocalCidr" : self.vpnlrt,
+                        "ApplianceKind" : ec2type
                     }
                 ]
             )
