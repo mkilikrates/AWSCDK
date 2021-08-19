@@ -163,12 +163,14 @@ class cvpn(core.Stack):
                     ).override_logical_id(f"cvpnauthrule{index}")
                     index = index + 1
 class s2svpn(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, funct, gwtype, gwid, tgwrt, tgwprop, tgwrtfunct, cgwaddr, route, ipfamily, staticrt = list, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, funct, gwtype, gwid, tgwrt, tgwprop, tgwrtfunct, cgwaddr, route, ipfamily, remoteregion, staticrt = list, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.cgwaddr = cgwaddr.get_att_string("PublicIp")
         ipfamily = ipfamily
         self.gwid = gwid
+        if remoteregion == '':
+            remoteregion = region
         tgwvpnattach = ''
         res = res
         if route == 'bgp':
@@ -301,7 +303,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMVPNid",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}",
                 description="VPNid",
                 string_value=self.vpn.ref
             )
@@ -309,7 +311,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMCGWIP",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}/CGWIP",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}/CGWIP",
                 description="CGWIP",
                 string_value=cgwaddr.get_att_string("PublicIp")
             )
@@ -317,7 +319,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMEIPAllocid",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}/EIPAllocid",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}/EIPAllocid",
                 description="EIPAllocid",
                 string_value=cgwaddr.get_att_string("AllocationId")
             )
@@ -508,7 +510,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMVPNid",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}",
                 description="VPNid",
                 string_value=self.mycustomvpn.get_att_string("VPNid")
             )
@@ -516,7 +518,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMCGWIP",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}/CGWIP",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}/CGWIP",
                 description="CGWIP",
                 string_value=cgwaddr.get_att_string("PublicIp")
             )
@@ -524,7 +526,7 @@ class s2svpn(core.Stack):
                 self,
                 "SSMEIPAllocid",
                 type=ssm.ParameterType("STRING"),
-                parameter_name=f"/{region}/vpn/{self.stack_name}/EIPAllocid",
+                parameter_name=f"/vpn/{remoteregion}/{self.stack_name}/EIPAllocid",
                 description="EIPAllocid",
                 string_value=cgwaddr.get_att_string("AllocationId")
             )

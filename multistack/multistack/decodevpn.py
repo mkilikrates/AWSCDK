@@ -6,9 +6,13 @@
 # MY-S2SVPNS3 ==> Name of contruct, you can use on cdk (cdk list, cdk deploy or cdk destroy). . This is the name of Cloudformation Template in cdk.out dir (MY-S2SVPNS3.template.json)
 # env ==> Environment to be used on this script (Account and region)
 # route ==> what is the routing preference. (bgp | static)
-# vpnid ==> VPN id to download configurantion and parse to write config files
+# remoteregion ==> region where vpn was created (to read using describe vpn API CALL)
+# funct ==> to just use a lambda function that already exist (in case of calling more than one time)
 # res ==> resource name to be used in this script, see it bellow in resourcesmap.cfg
-# vpc ==> vcp-id where will be created security group and launched this instance
+# vpnstackname ==> StackName in case of reference cross regions, to find the vpnid using this reference on lambda
+# vpnid ==> VPN id to download configurantion and parse to write config files
+# PS use vpnstackname or vpnid
+# vpc ==> vcp-id where will be launched the virtual appliance
 
 #### How to create a resource information on resourcesmap.cfg for this template
 # {
@@ -42,23 +46,34 @@ class S2SVPNS3(core.Stack):
         # The code that defines your stack goes here
         # get imported objects
         self.vpc = vpc
+        vpnproperties = {}
         if remoteregion == '':
             remoteregion = region
+        vpnproperties['Region'] = remoteregion
         if vpnid == '':
-            self.vpnid = ssm.StringParameter.from_string_parameter_attributes(
-                self,
-                'SSMVPNid',
-                parameter_name=f"/{remoteregion}/vpn/{vpnstackname}"
-            ).string_value
+            vpnproperties['VPN'] = vpnstackname
         else:
             self.vpnid = vpnid
+            vpnproperties['VPN'] = self.vpnid
         self.route = route
+        vpnproperties['Route'] = self.route
         res = res
-        self.bucketname = resmap['Mappings']['Resources'][res]['S3']
+        if 'S3' in resmap['Mappings']['Resources'][res]:
+            self.bucketname = resmap['Mappings']['Resources'][res]['S3']
+            vpnproperties['S3'] = self.bucketname
+        if 'VPNLRT' in resmap['Mappings']['Resources'][res]:
+            self.vpnlrt = resmap['Mappings']['Resources'][res]['VPNLRT']
+        else:
+            self.vpnlrt = self.vpc.vpc_cidr_block
+        vpnproperties['LocalCidr'] = self.vpnlrt
+        if self.route == 'static':
+            self.vpnrrt = resmap['Mappings']['Resources'][res]['VPNRRT']
+            vpnproperties['RemoteCidr'] = self.vpnrrt
         if 'TYPE' in resmap['Mappings']['Resources'][res]:
             ec2type = resmap['Mappings']['Resources'][res]['TYPE']
         else:
-            ec2type = 'EC2'
+            ec2type = ''
+        vpnproperties['ApplianceKind'] = ec2type
         if funct =='':
             # create Police for lambda function
             self.mylambdapolicy = iam.PolicyStatement(
@@ -89,7 +104,9 @@ class S2SVPNS3(core.Stack):
             )
             self.mylambdaSSMpolicy = iam.PolicyStatement(
                 actions=[
-                    "ssm:PutParameter"
+                    "ssm:PutParameter",
+                    "ssm:GetParameter",
+                    "ssm:DeleteParameter"
                 ],
                 resources=["*"],
                 effect=iam.Effect.ALLOW
@@ -120,47 +137,12 @@ class S2SVPNS3(core.Stack):
                 log_retention=log.RetentionDays.ONE_WEEK
             )
             funct = self.mylambda.function_arn
-        self.bucketname = resmap['Mappings']['Resources'][res]['S3']
-        if 'VPNLRT' in resmap['Mappings']['Resources'][res]:
-            self.vpnlrt = resmap['Mappings']['Resources'][res]['VPNLRT']
-        else:
-            self.vpnlrt = self.vpc.vpc_cidr_block
-        if self.route == 'static':
-            self.vpnrrt = resmap['Mappings']['Resources'][res]['VPNRRT']
-            self.mycustomresource = core.CustomResource(
-                self,
-                f"{construct_id}:CustomResource",
-                service_token=funct,
-                properties=[
-                    {
-                        "VPN" : self.vpnid,
-                        "Route" : self.route,
-                        "Region" : remoteregion,
-                        "RemoteCidr" : self.vpnrrt,
-                        "LocalCidr" : self.vpnlrt,
-                        "StackName" : vpnstackname,
-                        "S3" : self.bucketname,
-                        "ApplianceKind" : ec2type
-                    }
-                ]
-            )
-        else:
-            self.mycustomresource = core.CustomResource(
-                self,
-                f"{construct_id}:CustomResource",
-                service_token=funct,
-                properties=[
-                    {
-                        "VPN" : self.vpnid,
-                        "Route" : self.route,
-                        "Region" : remoteregion,
-                        "S3" : self.bucketname,
-                        "StackName" : vpnstackname,
-                        "LocalCidr" : self.vpnlrt,
-                        "ApplianceKind" : ec2type
-                    }
-                ]
-            )
+        self.mycustomresource = core.CustomResource(
+            self,
+            f"{construct_id}:CustomResource",
+            service_token=funct,
+            properties=[vpnproperties]
+        )
 
         self.funct = core.CfnOutput(
             self,
@@ -168,28 +150,28 @@ class S2SVPNS3(core.Stack):
             value=funct,
             export_name=f"{construct_id}:LambdaArn"
         )
-        # create Police for lambda function
-        self.vpnreadpolicy = iam.PolicyStatement(
-            actions=[
-                "s3:GetObject",
-                "s3:ListBucket"
-            ],
-            resources=[
-                f"arn:aws:s3:::{self.bucketname}",
-                f"arn:aws:s3:::{self.bucketname}/vpn/{self.vpnid}*"
-            ],
-            effect=iam.Effect.ALLOW
-        )
-        self.bkt = core.CfnOutput(
-            self,
-            f"{construct_id}:bucketname",
-            value=self.bucketname,
-            export_name=f"{construct_id}:bucketname"
-        )
-        self.vpndir = core.CfnOutput(
-            self,
-            f"{construct_id}:folder",
-            value=f"/vpn/{self.vpnid}/",
-            export_name=f"{construct_id}:folder"
-        )
+        # # create Police for lambda function
+        # self.vpnreadpolicy = iam.PolicyStatement(
+        #     actions=[
+        #         "s3:GetObject",
+        #         "s3:ListBucket"
+        #     ],
+        #     resources=[
+        #         f"arn:aws:s3:::{self.bucketname}",
+        #         f"arn:aws:s3:::{self.bucketname}/vpn/{self.vpnid}*"
+        #     ],
+        #     effect=iam.Effect.ALLOW
+        # )
+        # self.bkt = core.CfnOutput(
+        #     self,
+        #     f"{construct_id}:bucketname",
+        #     value=self.bucketname,
+        #     export_name=f"{construct_id}:bucketname"
+        # )
+        # self.vpndir = core.CfnOutput(
+        #     self,
+        #     f"{construct_id}:folder",
+        #     value=f"/vpn/{self.vpnid}/",
+        #     export_name=f"{construct_id}:folder"
+        # )
         

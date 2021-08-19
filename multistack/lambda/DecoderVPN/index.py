@@ -14,14 +14,30 @@ region = os.environ['AWS_REGION']
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
-ssm = boto3.client('ssm')
 
-def putparameter(keylist):
+def putparameter(keylist,vpnregion):
     try:
+        ssm = boto3.client('ssm', region_name=vpnregion)
         response = ssm.put_parameter(**keylist)
         return response
     except Exception as e:
         logger.info('SSM STORE: Put Parameter Error: {}'.format(e))
+
+def deleteparameter(keylist,vpnregion):
+    try:
+        ssm = boto3.client('ssm', region_name=vpnregion)
+        response = ssm.delete_parameter(**keylist)
+        return response
+    except Exception as e:
+        logger.info('SSM STORE: Delete Parameter Error: {}'.format(e))
+
+def getparameter(keylist,vpnregion):
+    try:
+        ssm = boto3.client('ssm', region_name=vpnregion)
+        response = ssm.get_parameter(**keylist)
+        return response
+    except Exception as e:
+        logger.info('SSM STORE: Get Parameter Error: {}'.format(e))
 
 def fileupload(mycfgfile, bucketname, myobj):
     try:
@@ -74,31 +90,48 @@ def describevpn(vpnid,vpnregion):
 def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
-    #region = event['region']
-    vpnid = event['ResourceProperties']['0']['VPN']
-    routetype = event['ResourceProperties']['0']['Route']
-    bucketname = event['ResourceProperties']['0']['S3']
     vpnregion = event['ResourceProperties']['0']['Region']
-    localcidr = event['ResourceProperties']['0']['LocalCidr']
-    vpnstackname = event['ResourceProperties']['0']['StackName']
-    ec2type = event['ResourceProperties']['0']['ApplianceKind']
-    localnet = []
-    localnetmask = []
-    if type(localcidr) == list:
-        for each in localcidr:
-            net, bits = each.split('/')
+    vpnstackname = event['ResourceProperties']['0']['VPN']
+    if vpnstackname.startswith('vpn-'):
+        vpnid = vpnstackname
+    else:
+        keylist = {}
+        keylist['Name'] = f"/vpn/{region}/{vpnstackname}"
+        action = getparameter(keylist, vpnregion)
+        vpnid = action['Parameter']['Value']
+    routetype = event['ResourceProperties']['0']['Route']
+    if 'S3' in event['ResourceProperties']['0']:
+        bucketname = event['ResourceProperties']['0']['S3']
+        mys3vpnfolder = f"vpn/{vpnid}/"
+        mylocalfolder = '/tmp/'
+    if 'ApplianceKind' in event['ResourceProperties']['0']:
+        ec2type = event['ResourceProperties']['0']['ApplianceKind']
+    else:
+        ec2type = ''
+    if 'LocalCidr' in event['ResourceProperties']['0']:
+        localcidr = event['ResourceProperties']['0']['LocalCidr']
+        localnet = []
+        localnetmask = []
+        if type(localcidr) == list:
+            for each in localcidr:
+                net, bits = each.split('/')
+                hostbits = 32 - int(bits)
+                localnet.append(net)
+                localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
+                localnetsize = len(localnet)
+        else:
+            net, bits = localcidr.split('/')
             hostbits = 32 - int(bits)
             localnet.append(net)
             localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
-            localnetsize = len(localnet)
+            localnetsize = 1
+        logger.info(f"Debugging : localnet={localnet}, localnetmask={localnetmask}, localnetsize={localnetsize}")
     else:
-        net, bits = localcidr.split('/')
-        hostbits = 32 - int(bits)
-        localnet.append(net)
-        localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
-        localnetsize = 1
-    logger.info(f"Debugging : localnet={localnet}, localnetmask={localnetmask}, localnetsize={localnetsize}")
-    if routetype == 'static':
+        localcidr = ''
+        localnet = ''
+        localnetmask = ''
+        localnetsize = ''
+    if 'RemoteCidr' in event['ResourceProperties']['0']:
         remotecidr = event['ResourceProperties']['0']['RemoteCidr']
         remotenet = []
         remotenetmask = []
@@ -120,8 +153,6 @@ def lambda_handler(event, context):
         remotenet = ''
         remotenetmask = ''
         remotenetsize = ''
-    mys3vpnfolder = f"vpn/{vpnid}/"
-    mylocalfolder = '/tmp/'
     requestId = event['RequestId']
     stacktId = event['StackId']
     logresId = event['LogicalResourceId']
@@ -138,31 +169,45 @@ def lambda_handler(event, context):
         if event['RequestType'] == 'Delete':
             phyresId = event['PhysicalResourceId']
             # get vpn configuration
-            deletevpnfolder(bucketname,mys3vpnfolder)
+            if bucketname != '':
+                deletevpnfolder(bucketname,mys3vpnfolder)
+            keylist = {}
+            keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+            action = deleteparameter(keylist, region)
+            keylist = {}
+            keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-1"
+            action = deleteparameter(keylist, region)
+            keylist = {}
+            keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-2"
+            action = deleteparameter(keylist, region)
             response["Status"] = "SUCCESS"
             response["Reason"] = ("VPN Config deletion succeed!")
         else:
             # get vpn configuration
             vpn = describevpn(vpnid,vpnregion)
             # create config folder to vpn files
-            createfolder(bucketname,mys3vpnfolder)
+            if bucketname != '':
+                createfolder(bucketname,mys3vpnfolder)
             # read template files
-            with open('ipsec_conf_fsw.tmpl') as f:
-                ipsec_conf_fsw = f.read()
-            templatefsw = Template(ipsec_conf_fsw)
-            f.close()
-            with open('ipsec_conf_osw.tmpl') as f:
-                ipsec_conf_osw = f.read()
-            templateosw = Template(ipsec_conf_osw)
-            f.close()
-            with open('bgpd_conf.tmpl') as f:
-                bgpd_conf = f.read()
-            templatequa = Template(bgpd_conf)
-            f.close()
-            with open('cisco_asr_conf.tmpl') as f:
-                ipsec_conf_asr = f.read()
-            templateasr = Template(ipsec_conf_asr)
-            f.close()
+            if ec2type == 'strongswan':
+                with open('ipsec_conf_fsw.tmpl') as f:
+                    ipsec_conf_fsw = f.read()
+                templatefsw = Template(ipsec_conf_fsw)
+                f.close()
+            if ec2type == 'strongswan' or ec2type == 'libreswan':
+                with open('ipsec_conf_osw.tmpl') as f:
+                    ipsec_conf_osw = f.read()
+                templateosw = Template(ipsec_conf_osw)
+                f.close()
+                with open('bgpd_conf.tmpl') as f:
+                    bgpd_conf = f.read()
+                templatequa = Template(bgpd_conf)
+                f.close()
+            if ec2type == 'CSR':
+                with open('cisco_asr_conf.tmpl') as f:
+                    ipsec_conf_asr = f.read()
+                templateasr = Template(ipsec_conf_asr)
+                f.close()
             # parse configuration
             myvpnconfig = vpn['VpnConnections'][0]['CustomerGatewayConfiguration']
             myvpnxml = xmltodict.parse(myvpnconfig)
@@ -192,13 +237,13 @@ def lambda_handler(event, context):
                 logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 keylist = {}
-                keylist['Name'] = f"/{vpnregion}/vpn/{vpnstackname}/VGW-{tnum}"
+                keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-{tnum}"
                 keylist['Description'] = f"VGW-{tnum} Endpoint Address"
                 keylist['Value'] = cgw_out_addr
                 keylist['Type'] = 'String'
                 keylist['Overwrite'] = True
                 keylist['Tier'] = 'Standard'
-                ssmput = putparameter(keylist)
+                ssmput = putparameter(keylist, region)
                 if ssmput['ResponseMetadata']['HTTPStatusCode'] != '200':
                     logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
                 if 'tunnel_inside_address' in tun['customer_gateway']:
@@ -461,198 +506,79 @@ def lambda_handler(event, context):
                         cespenc = 'esp-aes'
                         cespint = 'esp-sha-hmac'
                 # generate installation files
-                # bash file to install openswan
-                if routetype == 'bgp':
-                    installlstswan = [
-                        "amazon-linux-extras install -y epel",
-                        "yum install -y strongswan quagga",
-                        "yum update -y",
-                        "export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')",
-                        f"route add -net {localcidr} gw $GATEWAY",
-                        f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.conf /etc/strongswan/ipsec.conf",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/strongswan/ipsec.secrets",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf",
-                        f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/strongswan/ipsec.d/aws-updown.sh",
-                        "systemctl enable strongswan",
-                        "systemctl enable zebra",
-                        "systemctl enable bgpd",
-                        "echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config",
-                        "echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config",
-                        "systemctl restart sshd.service",
-                        "reboot"
-                    ]
-                else:
-                    installlstswan = [
-                        "amazon-linux-extras install -y epel",
-                        "yum install -y strongswan",
-                        "yum update -y",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.conf /etc/strongswan/ipsec.conf",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/strongswan/ipsec.secrets",
-                        f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/strongswan/ipsec.d/aws-updown.sh",
-                        "systemctl enable strongswan",
-                        "systemctl enable zebra",
-                        "echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config",
-                        "echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config",
-                        "systemctl restart sshd.service",
-                        "reboot"
-                    ]
-                output = '\n'.join(installlstswan)
-                mycfgfile = f"{mylocalfolder}install_strongswan.sh"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                    outputfile.write(output)
-                    outputfile.close()
-                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                # bash file to install strongswan
+                if ec2type == 'strongswan' and bucketname != '':
+                    installlstswan = []
+                    installlstswan.append("amazon-linux-extras install -y epel")
+                    installlstswan.append("yum install -y strongswan")
+                    installlstswan.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                    if type(localcidr) == list:
+                        for each in localcidr:
+                            installlstswan.append(f"route add -net {each} gw $GATEWAY")
+                        installlstswan.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    else:
+                        installlstswan.append(f"route add -net {localcidr} gw $GATEWAY")
+                        installlstswan.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.conf /etc/strongswan/ipsec.conf")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/strongswan/ipsec.secrets")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/strongswan/ipsec.d/aws-updown.sh")
+                    installlstswan.append("systemctl enable strongswan")
+                    if routetype == 'bgp':
+                        installlstswan.append("yum install -y quagga")
+                        installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
+                        installlstswan.append("systemctl enable zebra")
+                        installlstswan.append("systemctl enable bgpd")
+                    installlstswan.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                    installlstswan.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                    installlstswan.append("systemctl restart sshd.service")
+                    installlstswan.append("yum update -y")
+                    installlstswan.append("reboot")
+                    output = '\n'.join(installlstswan)
+                    mycfgfile = f"{mylocalfolder}install_strongswan.sh"
+                    if tnum == 1:
+                        outputfile = open(mycfgfile, 'w')
+                        outputfile.write(output)
+                        outputfile.close()
+                        logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # bash file to install libreswan
-                if routetype == 'bgp':
-                    installlstlibre = [
-                        "amazon-linux-extras install -y epel",
-                        "yum install -y libreswan quagga",
-                        "yum update -y",
-                        "export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')",
-                        f"route add -net {localcidr} gw $GATEWAY",
-                        f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}{vpnid}.conf /etc/ipsec.d/{vpnid}.conf",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/ipsec.d/ipsec.secrets",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf",
-                        f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/ipsec.d/aws-updown.sh",
-                        "systemctl enable ipsec.service",
-                        "systemctl enable zebra",
-                        "systemctl enable bgpd",
-                        "echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config",
-                        "echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config",
-                        "systemctl restart sshd.service",
-                        "reboot"
-                    ]
-                else:
-                    installlstlibre = [
-                        "amazon-linux-extras install -y epel",
-                        "yum install -y libreswan",
-                        "yum update -y",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}{vpnid}.conf /etc/ipsec.d/{vpnid}.conf",
-                        f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/ipsec.d/ipsec.secrets",
-                        f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/ipsec.d/aws-updown.sh",
-                        "systemctl enable ipsec.service",
-                        "systemctl enable zebra",
-                        "echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config",
-                        "echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config",
-                        "systemctl restart sshd.service",
-                        "reboot"
-                    ]
-                output = '\n'.join(installlstlibre)
-                mycfgfile = f"{mylocalfolder}install_libreswan.sh"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                    outputfile.write(output)
-                    outputfile.close()
-                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                if ec2type == 'libreswan' and bucketname != '':
+                    installlstlibre = []
+                    installlstlibre.append("amazon-linux-extras install -y epel")
+                    installlstlibre.append("yum install -y libreswan")
+                    installlstlibre.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                    if type(localcidr) == list:
+                        for each in localcidr:
+                            installlstlibre.append(f"route add -net {each} gw $GATEWAY")
+                        installlstlibre.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    else:
+                        installlstlibre.append(f"route add -net {localcidr} gw $GATEWAY")
+                        installlstlibre.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}{vpnid}.conf /etc/ipsec.d/{vpnid}.conf")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/ipsec.d/ipsec.secrets")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/ipsec.d/aws-updown.sh")
+                    installlstlibre.append("systemctl enable ipsec.service")
+                    if routetype == 'bgp':
+                        installlstlibre.append("yum install -y quagga")
+                        installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
+                        installlstlibre.append("systemctl enable zebra")
+                        installlstlibre.append("systemctl enable bgpd")
+                    installlstlibre.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                    installlstlibre.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                    installlstlibre.append("systemctl restart sshd.service")
+                    installlstlibre.append("yum update -y")
+                    installlstlibre.append("reboot")
+                    output = '\n'.join(installlstlibre)
+                    mycfgfile = f"{mylocalfolder}install_libreswan.sh"
+                    if tnum == 1:
+                        outputfile = open(mycfgfile, 'w')
+                        outputfile.write(output)
+                        outputfile.close()
+                        logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # generate config files
                 # secret file for openswan/libreswan
-                output = ('#Tunnel {0}\n{1} {2} : PSK "{3}"\n'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
-                mycfgfile = f"{mylocalfolder}ipsec.secrets"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                else:
-                    outputfile = open(mycfgfile, 'a')
-                outputfile.write(output)
-                outputfile.close()
-                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
-                # vpnid.conf
-                output = templatefsw.render(
-                    tnum = tnum,
-                    cgw_out_addr = cgw_out_addr,
-                    vgw_out_addr = vgw_out_addr,
-                    cgw_in_addr = cgw_in_addr,
-                    cgw_in_cidr = cgw_in_cidr,
-                    vgw_in_addr = vgw_in_addr,
-                    vgw_in_cidr = vgw_in_cidr,
-                    localcidr = localcidr,
-                    ipsec_mode = ipsec_mode,
-                    ike_encryption_protocol = ike_encryption_protocol,
-                    ike_authentication_protocol = ike_authentication_protocol,
-                    ike_lifetime = int(ike_lifetime)/3600,
-                    ipsec_encryption_protocol = ipsec_encryption_protocol,
-                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                    ipsec_lifetime = int(ipsec_lifetime)/3600,
-                    dpd_delay = int(dpd_delay),
-                    dpdtimeout = int(dpd_retry)*int(dpd_delay),
-                    startact = startact,
-                    keych = keych,
-                    ike = ike,
-                    esp = esp, 
-                    leftsubnet = leftsubnet,
-                    rightsubnet = rightsubnet,
-                    rkfz = rkfz,
-                    rkmg = rkmg,
-                    rplw = rplw,
-                    dpdact = dpdact
-                )
-                output = (output.replace("\n\n","\n")).replace("\n\n","\n")
-                mycfgfile = f"{mylocalfolder}{vpnid}.conf"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                else:
-                    outputfile = open(mycfgfile, 'a')
-                outputfile.write(output)
-                outputfile.close()
-                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
-                # ipsec.conf
-                output = templateosw.render(
-                    tnum = tnum,
-                    cgw_out_addr = cgw_out_addr,
-                    vgw_out_addr = vgw_out_addr,
-                    cgw_in_addr = cgw_in_addr,
-                    cgw_in_cidr = cgw_in_cidr,
-                    vgw_in_addr = vgw_in_addr,
-                    vgw_in_cidr = vgw_in_cidr,
-                    localcidr = localcidr,
-                    remotecidr = remotecidr,
-                    ipsec_mode = ipsec_mode,
-                    ike_encryption_protocol = ike_encryption_protocol,
-                    ike_authentication_protocol = ike_authentication_protocol,
-                    ike_lifetime = ike_lifetime,
-                    ipsec_encryption_protocol = ipsec_encryption_protocol,
-                    ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
-                    ipsec_lifetime = ipsec_lifetime,
-                    dpd_delay = int(dpd_delay),
-                    dpdtimeout = int(dpd_retry)*int(dpd_delay),
-                    ipsec_fragmentation_before_encryption = ipsec_fragmentation_before_encryption,
-                    startact = startact,
-                    keych = keych,
-                    ike = ike,
-                    esp = esp, 
-                    leftsubnet = leftsubnet,
-                    rightsubnet = rightsubnet,
-                    rkfz = rkfz,
-                    rkmg = rkmg,
-                    rplw = rplw,
-                    dpdact = dpdact
-                )
-                output = (output.replace("\n\n","\n")).replace("\n\n","\n")
-                mycfgfile = f"{mylocalfolder}ipsec.conf"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                else:
-                    outputfile = open(mycfgfile, 'a')
-                outputfile.write(output)
-                outputfile.close()
-                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
-                # bgp.conf
-                if routetype == 'bgp':
-                    output = templatequa.render(
-                        tnum = tnum,
-                        cgw_bgp_asn = cgw_bgp_asn,
-                        vgw_in_addr = vgw_in_addr,
-                        cgw_in_addr = cgw_in_addr,
-                        vgw_in_v6addr = vgw_in_v6addr,
-                        cgw_in_v6addr = cgw_in_v6addr,
-                        vgw_bgp_asn = vgw_bgp_asn,
-                        cgw_bgp_ht = cgw_bgp_ht,
-                        localcidr = localcidr
-                    )
-                    output = (output.replace("\n\n","\n")).replace("\n\n","\n")
-                    mycfgfile = f"{mylocalfolder}bgp.conf"
+                if ec2type == 'strongswan' or ec2type == 'libreswan':                
+                    output = ('#Tunnel {0}\n{1} {2} : PSK "{3}"\n'.format(tnum, cgw_out_addr, vgw_out_addr, ike_pre_shared_key))
+                    mycfgfile = f"{mylocalfolder}ipsec.secrets"
                     if tnum == 1:
                         outputfile = open(mycfgfile, 'w')
                     else:
@@ -660,108 +586,235 @@ def lambda_handler(event, context):
                     outputfile.write(output)
                     outputfile.close()
                     logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                # vpnid.conf
+                if ec2type == 'strongswan':
+                    output = templatefsw.render(
+                        tnum = tnum,
+                        cgw_out_addr = cgw_out_addr,
+                        vgw_out_addr = vgw_out_addr,
+                        cgw_in_addr = cgw_in_addr,
+                        cgw_in_cidr = cgw_in_cidr,
+                        vgw_in_addr = vgw_in_addr,
+                        vgw_in_cidr = vgw_in_cidr,
+                        localcidr = localcidr,
+                        ipsec_mode = ipsec_mode,
+                        ike_encryption_protocol = ike_encryption_protocol,
+                        ike_authentication_protocol = ike_authentication_protocol,
+                        ike_lifetime = int(ike_lifetime)/3600,
+                        ipsec_encryption_protocol = ipsec_encryption_protocol,
+                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                        ipsec_lifetime = int(ipsec_lifetime)/3600,
+                        dpd_delay = int(dpd_delay),
+                        dpdtimeout = int(dpd_retry)*int(dpd_delay),
+                        startact = startact,
+                        keych = keych,
+                        ike = ike,
+                        esp = esp, 
+                        leftsubnet = leftsubnet,
+                        rightsubnet = rightsubnet,
+                        rkfz = rkfz,
+                        rkmg = rkmg,
+                        rplw = rplw,
+                        dpdact = dpdact
+                    )
+                    output = (output.replace("\n\n","\n")).replace("\n\n","\n")
+                    mycfgfile = f"{mylocalfolder}{vpnid}.conf"
+                    if tnum == 1:
+                        outputfile = open(mycfgfile, 'w')
+                    else:
+                        outputfile = open(mycfgfile, 'a')
+                    outputfile.write(output)
+                    outputfile.close()
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                # ipsec.conf
+                if ec2type == 'strongswan':
+                    output = templateosw.render(
+                        tnum = tnum,
+                        cgw_out_addr = cgw_out_addr,
+                        vgw_out_addr = vgw_out_addr,
+                        cgw_in_addr = cgw_in_addr,
+                        cgw_in_cidr = cgw_in_cidr,
+                        vgw_in_addr = vgw_in_addr,
+                        vgw_in_cidr = vgw_in_cidr,
+                        localcidr = localcidr,
+                        remotecidr = remotecidr,
+                        ipsec_mode = ipsec_mode,
+                        ike_encryption_protocol = ike_encryption_protocol,
+                        ike_authentication_protocol = ike_authentication_protocol,
+                        ike_lifetime = ike_lifetime,
+                        ipsec_encryption_protocol = ipsec_encryption_protocol,
+                        ipsec_authentication_protocol = (ipsec_authentication_protocol.split('-')[1]),
+                        ipsec_lifetime = ipsec_lifetime,
+                        dpd_delay = int(dpd_delay),
+                        dpdtimeout = int(dpd_retry)*int(dpd_delay),
+                        ipsec_fragmentation_before_encryption = ipsec_fragmentation_before_encryption,
+                        startact = startact,
+                        keych = keych,
+                        ike = ike,
+                        esp = esp, 
+                        leftsubnet = leftsubnet,
+                        rightsubnet = rightsubnet,
+                        rkfz = rkfz,
+                        rkmg = rkmg,
+                        rplw = rplw,
+                        dpdact = dpdact
+                    )
+                    output = (output.replace("\n\n","\n")).replace("\n\n","\n")
+                    mycfgfile = f"{mylocalfolder}ipsec.conf"
+                    if tnum == 1:
+                        outputfile = open(mycfgfile, 'w')
+                    else:
+                        outputfile = open(mycfgfile, 'a')
+                    outputfile.write(output)
+                    outputfile.close()
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                    # bgp.conf
+                    if routetype == 'bgp':
+                        output = templatequa.render(
+                            tnum = tnum,
+                            cgw_bgp_asn = cgw_bgp_asn,
+                            vgw_in_addr = vgw_in_addr,
+                            cgw_in_addr = cgw_in_addr,
+                            vgw_in_v6addr = vgw_in_v6addr,
+                            cgw_in_v6addr = cgw_in_v6addr,
+                            vgw_bgp_asn = vgw_bgp_asn,
+                            cgw_bgp_ht = cgw_bgp_ht,
+                            localcidr = localcidr
+                        )
+                        output = (output.replace("\n\n","\n")).replace("\n\n","\n")
+                        mycfgfile = f"{mylocalfolder}bgp.conf"
+                        if tnum == 1:
+                            outputfile = open(mycfgfile, 'w')
+                        else:
+                            outputfile = open(mycfgfile, 'a')
+                        outputfile.write(output)
+                        outputfile.close()
+                        logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # cisco_asr.conf
-                output = templateasr.render(
-                    tnum = tnum,
-                    vpnid = vpnid,
-                    routetype = routetype,
-                    cgw_out_addr = cgw_out_addr,
-                    vgw_out_addr = vgw_out_addr,
-                    cgw_in_addr = cgw_in_addr,
-                    cgw_in_mask = cgw_in_mask,
-                    vgw_in_addr = vgw_in_addr,
-                    localnet = localnet,
-                    localnetmask = localnetmask,
-                    localnetsize = localnetsize,
-                    remotenet = remotenet,
-                    remotenetmask = remotenetmask,
-                    remotenetsize = remotenetsize,
-                    cgcm = cgcm,
-                    remotecidr = remotecidr,
-                    ike_encryption_protocol = cikeenc,
-                    ike_authentication_protocol = cikeint,
-                    cph1dh = cph1dh,
-                    cph2dh = cph2dh,
-                    ike_pre_shared_key = ike_pre_shared_key,
-                    ike_lifetime = int(ike_lifetime),
-                    ipsec_encryption_protocol = cespenc,
-                    ipsec_authentication_protocol = cespint,
-                    ipsec_lifetime = int(ipsec_lifetime),
-                    dpd_delay = int(dpd_delay),
-                    dpd_retry = int(dpd_retry),
-                    keych = ckeych,
-                    leftsubnet = leftsubnet,
-                    rightsubnet = rightsubnet,
-                    rkfz = rkfz,
-                    rkmg = rkmg,
-                    rplw = rplw,
-                    cgw_bgp_asn = cgw_bgp_asn,
-                    vgw_bgp_asn = vgw_bgp_asn,
-                    cgw_bgp_ht = cgw_bgp_ht,
-                    dpdact = dpdact
-                )
-                output = (output.replace("\n\n","\n")).replace("\n\n","\n")
-                mycfgfile = f"{mylocalfolder}cisco_asr.conf"
-                if tnum == 1:
-                    outputfile = open(mycfgfile, 'w')
-                else:
-                    outputfile = open(mycfgfile, 'a')
-                outputfile.write(output)
-                outputfile.close()
-                logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                if ec2type == 'CSR':
+                    output = templateasr.render(
+                        tnum = tnum,
+                        vpnid = vpnid,
+                        routetype = routetype,
+                        cgw_out_addr = cgw_out_addr,
+                        vgw_out_addr = vgw_out_addr,
+                        cgw_in_addr = cgw_in_addr,
+                        cgw_in_mask = cgw_in_mask,
+                        vgw_in_addr = vgw_in_addr,
+                        localnet = localnet,
+                        localnetmask = localnetmask,
+                        localnetsize = localnetsize,
+                        remotenet = remotenet,
+                        remotenetmask = remotenetmask,
+                        remotenetsize = remotenetsize,
+                        cgcm = cgcm,
+                        remotecidr = remotecidr,
+                        ike_encryption_protocol = cikeenc,
+                        ike_authentication_protocol = cikeint,
+                        cph1dh = cph1dh,
+                        cph2dh = cph2dh,
+                        ike_pre_shared_key = ike_pre_shared_key,
+                        ike_lifetime = int(ike_lifetime),
+                        ipsec_encryption_protocol = cespenc,
+                        ipsec_authentication_protocol = cespint,
+                        ipsec_lifetime = int(ipsec_lifetime),
+                        dpd_delay = int(dpd_delay),
+                        dpd_retry = int(dpd_retry),
+                        keych = ckeych,
+                        leftsubnet = leftsubnet,
+                        rightsubnet = rightsubnet,
+                        rkfz = rkfz,
+                        rkmg = rkmg,
+                        rplw = rplw,
+                        cgw_bgp_asn = cgw_bgp_asn,
+                        vgw_bgp_asn = vgw_bgp_asn,
+                        cgw_bgp_ht = cgw_bgp_ht,
+                        dpdact = dpdact
+                    )
+                    output = (output.replace("\n\n","\n")).replace("\n\n","\n")
+                    mycfgfile = f"{mylocalfolder}cisco_asr.conf"
+                    if tnum == 1:
+                        outputfile = open(mycfgfile, 'w')
+                    else:
+                        outputfile = open(mycfgfile, 'a')
+                    outputfile.write(output)
+                    outputfile.close()
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
             # upload files
             # install_strongswan.sh
-            mycfgfile = f"{mylocalfolder}install_strongswan.sh"
-            myobj = f"{mys3vpnfolder}install_strongswan.sh"
-            fileupload(mycfgfile, bucketname, myobj)
-            # install_libreswan.sh
-            mycfgfile = f"{mylocalfolder}install_libreswan.sh"
-            myobj = f"{mys3vpnfolder}install_libreswan.sh"
-            fileupload(mycfgfile, bucketname, myobj)
-            # vpnid.conf
-            mycfgfile = f"{mylocalfolder}{vpnid}.conf"
-            myobj = f"{mys3vpnfolder}{vpnid}.conf"
-            fileupload(mycfgfile, bucketname, myobj)
-            # ipsec.conf
-            mycfgfile = f"{mylocalfolder}ipsec.conf"
-            myobj = f"{mys3vpnfolder}ipsec.conf"
-            fileupload(mycfgfile, bucketname, myobj)
-            if routetype == 'bgp':
-                # bgp.conf
-                mycfgfile = f"{mylocalfolder}bgp.conf"
-                myobj = f"{mys3vpnfolder}bgp.conf"
-                fileupload(mycfgfile, bucketname, myobj)
-            # ipsec.secrets
-            mycfgfile = f"{mylocalfolder}ipsec.secrets"
-            myobj = f"{mys3vpnfolder}ipsec.secrets"
-            fileupload(mycfgfile, bucketname, myobj)
-            # cisco_asr.conf
-            mycfgfile = f"{mylocalfolder}cisco_asr.conf"
-            with open(mycfgfile, 'r') as f:
-                lines = f.read()
-            lines = lines.split("\n")                
-            output = []
-            index = 1
-            for line in lines:
-                if line != '':
-                    output.append(f"ios-config-{index}=\"{line}\"\n")
-                    index = index + 1
-            with open(mycfgfile, 'w') as f:
-                f.writelines(output)
-            myobj = f"{mys3vpnfolder}cisco_asr.conf"
-            fileupload(mycfgfile, bucketname, myobj)
-            if ec2type == 'CSR':
+            if ec2type == 'strongswan':
+                mycfgfile = f"{mylocalfolder}install_strongswan.sh"
+                myobj = f"{mys3vpnfolder}install_strongswan.sh"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
                 with open(mycfgfile, 'r') as f:
                     lines = f.read()
                 keylist = {}
-                keylist['Name'] = f"/{vpnregion}/vpn/{vpnstackname}/CSR-cfg"
+                keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                keylist['Description'] = f"StrongSwan User-Data"
+                keylist['Value'] = lines
+                keylist['Type'] = 'String'
+                keylist['Overwrite'] = True
+                keylist['Tier'] = 'Advanced'
+                ssmput = putparameter(keylist, region)
+                if ssmput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
+                # ipsec.conf
+                mycfgfile = f"{mylocalfolder}ipsec.conf"
+                myobj = f"{mys3vpnfolder}ipsec.conf"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+            # install_libreswan.sh
+            if ec2type == 'strongswan':
+                mycfgfile = f"{mylocalfolder}install_libreswan.sh"
+                myobj = f"{mys3vpnfolder}install_libreswan.sh"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+                # vpnid.conf
+                mycfgfile = f"{mylocalfolder}{vpnid}.conf"
+                myobj = f"{mys3vpnfolder}{vpnid}.conf"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+            if ec2type == 'strongswan' or ec2type == 'libreswan':
+                # ipsec.secrets
+                mycfgfile = f"{mylocalfolder}ipsec.secrets"
+                myobj = f"{mys3vpnfolder}ipsec.secrets"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+                if routetype == 'bgp':
+                    # bgp.conf
+                    mycfgfile = f"{mylocalfolder}bgp.conf"
+                    myobj = f"{mys3vpnfolder}bgp.conf"
+                    if bucketname != '':
+                        fileupload(mycfgfile, bucketname, myobj)
+            # cisco_asr.conf
+            if ec2type == 'CSR':            
+                mycfgfile = f"{mylocalfolder}cisco_asr.conf"
+                with open(mycfgfile, 'r') as f:
+                    lines = f.read()
+                lines = lines.split("\n")                
+                output = []
+                index = 1
+                for line in lines:
+                    if line != '':
+                        output.append(f"ios-config-{index}=\"{line}\"\n")
+                        index = index + 1
+                with open(mycfgfile, 'w') as f:
+                    f.writelines(output)
+                myobj = f"{mys3vpnfolder}cisco_asr.conf"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+                with open(mycfgfile, 'r') as f:
+                    lines = f.read()
+                keylist = {}
+                keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
                 keylist['Description'] = f"Cisco CSR VGW Endpoint User-Data"
                 keylist['Value'] = lines
                 keylist['Type'] = 'String'
                 keylist['Overwrite'] = True
                 keylist['Tier'] = 'Advanced'
-                ssmput = putparameter(keylist)
+                ssmput = putparameter(keylist, region)
                 if ssmput['ResponseMetadata']['HTTPStatusCode'] != 200:
                     logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
             # generate response
