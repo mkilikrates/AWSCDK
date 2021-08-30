@@ -9,6 +9,11 @@ no ip http secure-server
 crypto ipsec security-association replay window-size {{ rplw }}
 crypto ipsec df-bit clear
 crypto ipsec fragmentation before-encryption
+{% if localnet != "" %}
+{% for i in range(0, localnetsize) %}
+ip route {{ localnet[i] }} {{ localnetmask[i] }} GigabitEthernet1 dhcp
+{% endfor %}
+{% endif %}
 {% endif %}
 {% if keych == "ikev2" %}
 crypto ikev2 proposal proposal-{{ vpnid }}-{{ tnum }}
@@ -72,23 +77,35 @@ tunnel mode ipsec ipv4
 tunnel destination {{ vgw_out_addr }}
 tunnel protection ipsec profile ipsec-{{ vpnid }}-{{ tnum }}
 ip virtual-reassembly
-{% if localnet != "" %}
-{% for i in range(0, localnetsize) %}
-ip route {{ localnet[i] }} {{ localnetmask[i] }} GigabitEthernet1 dhcp
-{% endfor %}
-{% endif %}
 {% if routetype == "bgp" %}
 router bgp {{ cgw_bgp_asn }}
 bgp log-neighbor-changes
 neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
 neighbor {{ vgw_in_addr }} timers 10 {{ cgw_bgp_ht }} {{ cgw_bgp_ht }}
 address-family ipv4
-{% if remotenet != "" %}
-{% for i in range(1, remotenetsize) %}
-network {{ remotenet[i] }} mask {{ remotenetmask[i] }}
+{% if localnet != "" %}
+{% for i in range(0, localnetsize) %}
+network {{ localnet[i] }} mask {{ localnetmask[i] }}
 {% endfor %}
 {% endif %}
 neighbor {{ vgw_in_addr }} activate
 neighbor {{ vgw_in_addr }} soft-reconfiguration inbound
 exit-address-family
+{% else %}
+ip sla {{ tnum }}
+icmp-echo {{ vgw_in_addr }} source-interface Tunnel{{ tnum }}
+request-data-size 64
+data-pattern FFFFFFFF
+frequency 10
+history distributions-of-statistics-kept 5
+history buckets-kept 25
+history filter failures
+history enhanced interval 900 buckets 100
+ip sla schedule {{ tnum }} life forever start-time now
+track {{ tnum }} ip sla {{ tnum }} reachability
+{% if remotenet != "" %}
+{% for i in range(0, remotenetsize) %}
+ip route {{ remotenet[i] }} {{ remotenetmask[i] }} Tunnel{{ tnum }} {{ vgw_in_addr }} track {{ tnum }}
+{% endfor %}
+{% endif %}
 {% endif %}
