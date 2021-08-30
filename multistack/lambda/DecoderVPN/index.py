@@ -1,5 +1,6 @@
 import os
 import sys
+import base64
 import boto3
 import json
 import time
@@ -15,53 +16,77 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 s3 = boto3.client('s3')
 
+def createsecret(keylist,vpnregion):
+    try:
+        secret = boto3.client('secretsmanager', region_name=vpnregion)
+        action = secret.create_secret(**keylist)
+        return action
+    except Exception as e:
+        logger.info('SecretsMgr: Create Secret Error: {}'.format(e))
+
+def putsecret(keylist,vpnregion):
+    try:
+        secret = boto3.client('secretsmanager', region_name=vpnregion)
+        action = secret.put_secret_value(**keylist)
+        return action
+    except Exception as e:
+        logger.info('SecretsMgr: Put Secret Error: {}'.format(e))
+
+def deletesecret(keylist,vpnregion):
+    try:
+        secret = boto3.client('secretsmanager', region_name=vpnregion)
+        action = secret.delete_secret(**keylist)
+        return action
+    except Exception as e:
+        logger.info('SecretsMgr: Delete Secret Error: {}'.format(e))
+
 def putparameter(keylist,vpnregion):
     try:
         ssm = boto3.client('ssm', region_name=vpnregion)
-        response = ssm.put_parameter(**keylist)
-        return response
+        action = ssm.put_parameter(**keylist)
+        return action
     except Exception as e:
         logger.info('SSM STORE: Put Parameter Error: {}'.format(e))
 
 def deleteparameter(keylist,vpnregion):
     try:
         ssm = boto3.client('ssm', region_name=vpnregion)
-        response = ssm.delete_parameter(**keylist)
-        return response
+        action = ssm.delete_parameter(**keylist)
+        return action
     except Exception as e:
         logger.info('SSM STORE: Delete Parameter Error: {}'.format(e))
 
 def getparameter(keylist,vpnregion):
     try:
         ssm = boto3.client('ssm', region_name=vpnregion)
-        response = ssm.get_parameter(**keylist)
-        return response
+        action = ssm.get_parameter(**keylist)
+        return action
     except Exception as e:
         logger.info('SSM STORE: Get Parameter Error: {}'.format(e))
 
 def fileupload(mycfgfile, bucketname, myobj):
     try:
         with open(mycfgfile, "rb") as data:
-            response = s3.upload_fileobj(data, bucketname, myobj)
+            action = s3.upload_fileobj(data, bucketname, myobj)
             logger.info('S3: Upload object Success: {}'.format(mycfgfile))
-            return response
+            return action
     except Exception as e:
         logger.info('S3: Creation of folder Error: {}'.format(e))
 
 def createfolder(bucketname, folder):
     # create config folder to vpn files
     try:
-        response = s3.put_object(Bucket=bucketname, Key=(folder))
+        action = s3.put_object(Bucket=bucketname, Key=(folder))
         logger.info('S3: Creation of folder Success: {}'.format(folder))
-        return response
+        return action
     except Exception as e:
         logger.info('S3: Creation of folder Error: {}'.format(e))
 
 def deletevpnfolder(bucketname, folder):
     # remove folder and vpn files
     try:
-        response = s3.list_objects_v2(Bucket=bucketname, Prefix=folder)
-        for obj in response['Contents']:
+        action = s3.list_objects_v2(Bucket=bucketname, Prefix=folder)
+        for obj in action['Contents']:
             # remove content
             if folder != obj['Key']:
                 s3.delete_object(Bucket=bucketname, Key=obj['Key'])
@@ -69,7 +94,7 @@ def deletevpnfolder(bucketname, folder):
         #remove folder
         s3.delete_object(Bucket=bucketname, Key=folder)
         logger.info('S3: Deletion of folder Success: {}'.format(folder))
-        return response
+        return action
     except Exception as e:
         logger.info('S3: Deletion of folder Error: {}'.format(e))
 
@@ -77,13 +102,13 @@ def describevpn(vpnid,vpnregion):
     # Get VPN Configuration XML
     try:
         ec2 = boto3.client('ec2', region_name=vpnregion)
-        response = ec2.describe_vpn_connections(
+        action = ec2.describe_vpn_connections(
             VpnConnectionIds=[
                 vpnid,
             ]
         )
         logger.info('EC2: VPN Configuration Received Success: {}'.format(vpnid))
-        return response
+        return action
     except Exception as e:
         logger.info('EC2: VPN Configuration Error: {}'.format(e))
 
@@ -92,6 +117,19 @@ def lambda_handler(event, context):
     logger.info('context: {}'.format(context))
     vpnregion = event['ResourceProperties']['0']['Region']
     vpnstackname = event['ResourceProperties']['0']['VPN']
+    requestId = event['RequestId']
+    eventtype = event['RequestType']
+    stacktId = event['StackId']
+    logresId = event['LogicalResourceId']
+    response = {
+        "Status": "SUCCESS",
+        "RequestId": requestId,
+        "StackId": stacktId,
+        "LogicalResourceId": logresId,
+        "PhysicalResourceId" : "None",
+        "Reason": "Nothing to do",
+        "Data": {}
+    }
     if vpnstackname.startswith('vpn-'):
         vpnid = vpnstackname
     else:
@@ -99,6 +137,21 @@ def lambda_handler(event, context):
         keylist['Name'] = f"/vpn/{region}/{vpnstackname}"
         action = getparameter(keylist, vpnregion)
         vpnid = action['Parameter']['Value']
+    # get allocation id for CGW
+    keylist = {}
+    keylist['Name'] = f"/vpn/{region}/{vpnstackname}/EIPAllocid"
+    action = getparameter(keylist, vpnregion)
+    cgwalloc = action['Parameter']['Value']
+    response["Data"]["EIPAllocid"] = cgwalloc
+    # write allocation id for CGW
+    keylist = {}
+    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/CGW-Allocid"
+    keylist['Description'] = f"CGW Elastic IP Allocation id"
+    keylist['Value'] = cgwalloc
+    keylist['Type'] = 'String'
+    keylist['Overwrite'] = True
+    keylist['Tier'] = 'Standard'
+    ssmput = putparameter(keylist, region)
     routetype = event['ResourceProperties']['0']['Route']
     if 'S3' in event['ResourceProperties']['0']:
         bucketname = event['ResourceProperties']['0']['S3']
@@ -125,7 +178,6 @@ def lambda_handler(event, context):
             localnet.append(net)
             localnetmask.append(socket.inet_ntoa(struct.pack('!I', (1 << 32) - (1 << hostbits))))
             localnetsize = 1
-        logger.info(f"Debugging : localnet={localnet}, localnetmask={localnetmask}, localnetsize={localnetsize}")
     else:
         localcidr = ''
         localnet = ''
@@ -153,32 +205,24 @@ def lambda_handler(event, context):
         remotenet = ''
         remotenetmask = ''
         remotenetsize = ''
-    requestId = event['RequestId']
-    stacktId = event['StackId']
-    logresId = event['LogicalResourceId']
-    response = {
-        "Status": "SUCCESS",
-        "RequestId": requestId,
-        "StackId": stacktId,
-        "LogicalResourceId": logresId,
-        "PhysicalResourceId" : "None",
-        "Reason": "Nothing to do",
-        "Data": {}
-    }
     try:
-        if event['RequestType'] == 'Delete':
+        if eventtype == 'Delete':
             phyresId = event['PhysicalResourceId']
             # get vpn configuration
             if bucketname != '':
                 deletevpnfolder(bucketname,mys3vpnfolder)
             keylist = {}
-            keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
-            action = deleteparameter(keylist, region)
+            keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+            keylist['ForceDeleteWithoutRecovery'] = True
+            action = deletesecret(keylist, region)
             keylist = {}
             keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-1"
             action = deleteparameter(keylist, region)
             keylist = {}
             keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-2"
+            action = deleteparameter(keylist, region)
+            keylist = {}
+            keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/CGW-Allocid"
             action = deleteparameter(keylist, region)
             response["Status"] = "SUCCESS"
             response["Reason"] = ("VPN Config deletion succeed!")
@@ -234,7 +278,6 @@ def lambda_handler(event, context):
             tnum = 1
             for index, tun in enumerate(tunnels):
                 # get variables
-                logger.info('Tunnel {0}: Content: {1}'.format(tnum, tun))
                 cgw_out_addr = tun['customer_gateway']['tunnel_outside_address']['ip_address']
                 keylist = {}
                 keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/VGW-{tnum}"
@@ -244,8 +287,6 @@ def lambda_handler(event, context):
                 keylist['Overwrite'] = True
                 keylist['Tier'] = 'Standard'
                 ssmput = putparameter(keylist, region)
-                if ssmput['ResponseMetadata']['HTTPStatusCode'] != '200':
-                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
                 if 'tunnel_inside_address' in tun['customer_gateway']:
                     cgw_in_addr = tun['customer_gateway']['tunnel_inside_address']['ip_address']
                     cgw_in_mask = tun['customer_gateway']['tunnel_inside_address']['network_mask']
@@ -750,23 +791,30 @@ def lambda_handler(event, context):
                     fileupload(mycfgfile, bucketname, myobj)
                 with open(mycfgfile, 'r') as f:
                     lines = f.read()
-                keylist = {}
-                keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
-                keylist['Description'] = f"StrongSwan User-Data"
-                keylist['Value'] = lines
-                keylist['Type'] = 'String'
-                keylist['Overwrite'] = True
-                keylist['Tier'] = 'Advanced'
-                ssmput = putparameter(keylist, region)
-                if ssmput['ResponseMetadata']['HTTPStatusCode'] != 200:
-                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
+                secretdata = base64.b64encode(lines.encode("ascii")).decode("ascii")
+                if eventtype == 'Create':
+                    keylist = {}
+                    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['Description'] = f"StrongSwan User-Data"
+                    keylist['SecretString'] = f"{secretdata}"
+                    secretsput = createsecret(keylist, region)
+                elif eventtype == 'Update':
+                    keylist = {}
+                    keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['SecretString'] = f"{secretdata}"
+                    secretsput = putsecret(keylist, region)
+                if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                    logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                else:
+                    logger.info('Secrets: Put Secret Success! : {}'.format(secretsput))
+                    response["Data"]["USRDATA"] = secretsput['ARN']
                 # ipsec.conf
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 myobj = f"{mys3vpnfolder}ipsec.conf"
                 if bucketname != '':
                     fileupload(mycfgfile, bucketname, myobj)
             # install_libreswan.sh
-            if ec2type == 'strongswan':
+            if ec2type == 'libreswan':
                 mycfgfile = f"{mylocalfolder}install_libreswan.sh"
                 myobj = f"{mys3vpnfolder}install_libreswan.sh"
                 if bucketname != '':
@@ -807,22 +855,29 @@ def lambda_handler(event, context):
                     fileupload(mycfgfile, bucketname, myobj)
                 with open(mycfgfile, 'r') as f:
                     lines = f.read()
-                keylist = {}
-                keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
-                keylist['Description'] = f"Cisco CSR VGW Endpoint User-Data"
-                keylist['Value'] = lines
-                keylist['Type'] = 'String'
-                keylist['Overwrite'] = True
-                keylist['Tier'] = 'Advanced'
-                ssmput = putparameter(keylist, region)
-                if ssmput['ResponseMetadata']['HTTPStatusCode'] != 200:
-                    logger.info('SSM STORE: Put Parameter Error: {}'.format(ssmput))
+                secretdata = base64.b64encode(lines.encode("ascii")).decode("ascii")
+                if eventtype == 'Create':
+                    keylist = {}
+                    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['Description'] = f"Cisco CSR VGW Endpoint User-Data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = createsecret(keylist, region)
+                elif eventtype == 'Update':
+                    keylist = {}
+                    keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = putsecret(keylist, region)
+                if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                    logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                else:
+                    logger.info('Secrets: Put Secret Success! : {}'.format(secretsput))
+                    response["Data"]["USRDATA"] = secretsput['ARN']
             # generate response
             phyresId = vpnid
             response["Status"] = "SUCCESS"
             response["Reason"] = ("Configuration upload succeed!")
             response["PhysicalResourceId"] = phyresId
-            response["Data"] = { "VPNid" : phyresId }
+            response["Data"]["VPNid"] = phyresId
     except Exception as e:
         response = {}
         logger.error('ERROR: {}'.format(e))

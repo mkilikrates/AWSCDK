@@ -93,8 +93,7 @@ class S2SVPNS3(core.Stack):
                     "s3:GetObject",
                     "s3:ListBucket",
                     "s3:DeleteObject",
-                    "s3:PutObject",
-                    "ssm:PutParameter"
+                    "s3:PutObject"
                 ],
                 resources=[
                     f"arn:aws:s3:::{self.bucketname}",
@@ -107,6 +106,15 @@ class S2SVPNS3(core.Stack):
                     "ssm:PutParameter",
                     "ssm:GetParameter",
                     "ssm:DeleteParameter"
+                ],
+                resources=["*"],
+                effect=iam.Effect.ALLOW
+            )
+            self.mylambdaSecretspolicy = iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:CreateSecret",
+                    "secretsmanager:PutSecretValue",
+                    "secretsmanager:DeleteSecret"
                 ],
                 resources=["*"],
                 effect=iam.Effect.ALLOW
@@ -124,6 +132,7 @@ class S2SVPNS3(core.Stack):
             self.mylambdarole.add_to_policy(self.mylambdapolicy)
             self.mylambdarole.add_to_policy(self.mylambdaS3policy)
             self.mylambdarole.add_to_policy(self.mylambdaSSMpolicy)
+            self.mylambdarole.add_to_policy(self.mylambdaSecretspolicy)
             # Create Lambda Function
             self.mylambda = lpython.PythonFunction(
                 self,
