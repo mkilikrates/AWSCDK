@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "cdk-assume-role-credential-plugin": "^1.2.3"
-  }
-}

@@ -179,13 +179,14 @@ class InstanceStack(core.Stack):
                         version=ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
                     )
                     image = 'Windows'
-                    usrdata = ec2.UserData.for_windows(
+                    usrdata = ec2.UserData.for_windows()
+                    usrdata.add_commands(
                         "$Path = $env:TEMP;",
                         "$Installer = \"msiexec.exe\";",
                         "$Package = \"AWSCLIV2.msi\";",
                         "$arguments = \"/I $Path\$Package /qn\";",
                         "Invoke-WebRequest \"https://awscli.amazonaws.com/AWSCLIV2.msi\" -OutFile     $Path\$Package;",
-                        "Start-Process $Installer -Wait -ArgumentList $arguments;",
+                        "Start-Process $Installer -Wait -ArgumentList $arguments;"
                         "Remove-Item $Path\$Package"
                     )
                 else:

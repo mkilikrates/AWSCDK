@@ -44,6 +44,14 @@ class cvpn(core.Stack):
             resportal = resmap['Mappings']['Resources'][res]['Portal']
         else:
             resportal = 'disabled'
+        if 'VPNTRANSP' in resmap['Mappings']['Resources'][res]:
+            resvpntransp = resmap['Mappings']['Resources'][res]['VPNTRANSP']
+        else:
+            resvpntransp = 'udp'
+        if 'VPNPORT' in resmap['Mappings']['Resources'][res]:
+            resvpnport = resmap['Mappings']['Resources'][res]['VPNPORT']
+        else:
+            resvpnport = 443
         # get hosted zone id
         self.hz = r53.HostedZone.from_lookup(
             self,
@@ -120,6 +128,8 @@ class cvpn(core.Stack):
             self_service_portal=resportal,
             split_tunnel=ressplit,
             vpc_id=self.vpc.vpc_id,
+            transport_protocol=resvpntransp,
+            vpn_port=resvpnport
         )
         # Network Target 
         for i, subnet in enumerate(self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids):
