@@ -31,6 +31,7 @@ from aws_cdk import (
     aws_directoryservice as ds,
     aws_secretsmanager as sm,
     aws_ec2 as ec2,
+    aws_ssm as ssm,
     core,
 )
 account = core.Aws.ACCOUNT_ID
@@ -123,6 +124,27 @@ class myds(core.Stack):
             value=self.ds.ref,
             export_name=f"{self.stack_name}id"
         )
+        self.dsname = core.CfnOutput(
+            self,
+            f"{self.stack_name}DomainName",
+            value=self.ds.name,
+            export_name=f"{self.stack_name}DomainName"
+        )
+        # splitdomain=resdomain.split('.')
+        # directoryou = ''
+        # for i in splitdomain:
+        #     if i == splitdomain[0]:
+        #         directoryou += str(f"OU={i},")
+        #     elif i == splitdomain[len(splitdomain)-1]:
+        #         directoryou += str(f"DC={i}")
+        #     else:
+        #         directoryou += str(f"DC={i},")
+        # self.dsou = core.CfnOutput(
+        #     self,
+        #     f"{self.stack_name}DirectoryOU",
+        #     value=directoryou,
+        #     export_name=f"{self.stack_name}DirectoryOU"
+        # )
         if resalias == True:
             core.CfnOutput(
                 self,
@@ -139,5 +161,40 @@ class myds(core.Stack):
                 export_name=f"{self.stack_name}Dns{index}",
             ).override_logical_id(f"{self.stack_name}Dns{index}")
             index = index + 1
+        # if 'SSMJOIN' in resmap['Mappings']['Resources'][res]:
+        #     if resmap['Mappings']['Resources'][res]['SSMJOIN'] == True:
+        #         ssmdoc = {}
+        #         ssmdoc['schemaVersion'] = '1.2'
+        #         ssmdoc['description'] = f"SSM document for join to domain {self.ds.ref}"
+        #         ssmdoc['runtimeConfig'] = {}
+        #         ssmdoc['runtimeConfig']['aws:domainJoin'] = {}
+        #         ssmdoc['runtimeConfig']['aws:domainJoin']['properties'] = {}
+        #         ssmdoc['runtimeConfig']['aws:domainJoin']['properties']['directoryId'] = self.ds.ref
+        #         ssmdoc['runtimeConfig']['aws:domainJoin']['properties']['directoryName'] = resdomain
+        #         splitdomain=resdomain.split('.')
+        #         directoryou = ''
+        #         for i in splitdomain:
+        #             if i == splitdomain[0]:
+        #                 directoryou += str(f"OU={i},")
+        #             elif i == splitdomain[len(splitdomain)-1]:
+        #                 directoryou += str(f"DC={i}")
+        #             else:
+        #                 directoryou += str(f"DC={i},")
+        #         ssmdoc['runtimeConfig']['aws:domainJoin']['properties']['directoryOU'] = directoryou
+        #         ssmdoc['runtimeConfig']['aws:domainJoin']['properties']['dnsIpAddresses'] = [self.ds.attr_dns_ip_addresses]
+        #         self.dsjoin = ssm.CfnDocument(
+        #             self,
+        #             f"{construct_id}{resname}Joindoc",
+        #             content=ssmdoc,
+        #             document_format='JSON'
+        #         )
+        #         self.dsjoindoc = core.CfnOutput(
+        #             self,
+        #             f"{self.stack_name}SSMJoindoc",
+        #             value=self.dsjoin.ref,
+        #             export_name=f"{self.stack_name}SSMJoindoc"
+        #         )
+
+        
 
 

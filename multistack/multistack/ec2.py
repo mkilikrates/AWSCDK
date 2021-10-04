@@ -5,6 +5,7 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_iam as iam,
     aws_ssm as ssm,
+    aws_directoryservice as ds,
     aws_secretsmanager as secretsmanager,
     core,
 )
@@ -17,7 +18,7 @@ account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 
 class InstanceStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, userdata, eipall = str, instpol = iam.PolicyStatement, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, userdata, ds, eipall = str, instpol = iam.PolicyStatement, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -60,7 +61,7 @@ class InstanceStack(core.Stack):
         # add ingress rule
         if allowsg != '':
             self.ec2sg.add_ingress_rule(
-                self.allowsg,
+                allowsg,
                 ec2.Port.all_traffic()
             )
         if preflst == True:
@@ -167,7 +168,8 @@ class InstanceStack(core.Stack):
                         generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
                     )
                     image = 'Linux'
-                    usrdata = ec2.UserData.for_linux(
+                    usrdata = ec2.UserData.for_linux()
+                    usrdata.add_commands(
                         "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
                         "rm /usr/bin/aws",
                         "unzip awscliv2.zip",
@@ -195,7 +197,8 @@ class InstanceStack(core.Stack):
                         generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
                     )
                     image = 'Linux'
-                    usrdata = ec2.UserData.for_linux(
+                    usrdata = ec2.UserData.for_linux()
+                    usrdata.add_commands(
                         "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
                         "rm /usr/bin/aws",
                         "unzip awscliv2.zip",
@@ -219,7 +222,8 @@ class InstanceStack(core.Stack):
                     generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
                 )
                 image = 'Linux'
-                usrdata = ec2.UserData.for_linux(
+                usrdata = ec2.UserData.for_linux()
+                usrdata.add_commands(
                     "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
                     "rm /usr/bin/aws",
                     "unzip awscliv2.zip",
@@ -232,7 +236,8 @@ class InstanceStack(core.Stack):
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
             )
             image = 'Linux'
-            usrdata = ec2.UserData.for_linux(
+            usrdata = ec2.UserData.for_linux()
+            usrdata.add_commands(
                 "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
                 "rm /usr/bin/aws",
                 "unzip awscliv2.zip",
@@ -242,7 +247,7 @@ class InstanceStack(core.Stack):
         if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
             self.key.grant_read_on_private_key(self.instance.role)
             if image == 'Linux':
-                usrdata.add_user_data(
+                usrdata.add_commands(
                     f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
                     f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
                     "chown -R ec2-user:ec2-user /home/ec2-user/.ssh",
@@ -250,52 +255,50 @@ class InstanceStack(core.Stack):
                     f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
                 )
             if image == 'Windows':
-                usrdata.add_user_data(
+                usrdata.add_commands(
                     "mkdir $home\\.ssh\n",
                     "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
                 )
-        print(userdata)
-        
+       
         if userdata == '':
             if 'USRFILE' in resmap['Mappings']['Resources'][res]:
                 userdata = resmap['Mappings']['Resources'][res]['USRFILE']
-        else:
-            if type(userdata) == str and image == 'Linux' or image == 'Windows':
-                usrdatafile = userdata
-                userdata = open(usrdatafile, "r").read()
-                usrdata.add_user_data(userdata)
-            elif type(userdata) == list and image == 'Linux':
-                usrdatalst = []
-                with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
-                    for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
-                        filename = usractions['filename']
-                        execution = usractions['execution']
-                        usrdatalst.append(f"{execution} {filename}\n")
-                        usrdatalst.append(f"rm {filename}\n")
-                        zip.write(filename)
-                if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
-                    customscript = Asset(
-                        self,
-                        f"{construct_id}customscript",
-                        path=f"cdk.out/{construct_id}customscript.zip"
-                    )
-                    customscript.grant_read(self.instance.role)
-                    usrdata.add_user_data(
-                        "yum install -y unzip",
-                        f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
-                        f"unzip customscript.zip",
-                        f"rm customscript.zip\n"
-                    )
-            elif type(userdata) == dict and image == 'Appliance':
-                if 'Secrets' in userdata:
-                    data = userdata['Secrets']
-                    self.secretdata = secretsmanager.Secret.from_secret_complete_arn(
-                        self,
-                        "USRDATA",
-                        secret_complete_arn=data
-                    ).secret_value
-                    usrdata = ec2.UserData.custom(self.secretdata.to_string())
-                    #usrdata = ec2.UserData.custom('')
+        if type(userdata) == str and image == 'Linux' or image == 'Windows':
+            usrdatafile = userdata
+            userdata = open(usrdatafile, "r").read()
+            usrdata.add_commands(userdata)
+        elif type(userdata) == list and image == 'Linux':
+            usrdatalst = []
+            with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
+                for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
+                    filename = usractions['filename']
+                    execution = usractions['execution']
+                    usrdatalst.append(f"{execution} {filename}\n")
+                    usrdatalst.append(f"rm {filename}\n")
+                    zip.write(filename)
+            if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
+                customscript = Asset(
+                    self,
+                    f"{construct_id}customscript",
+                    path=f"cdk.out/{construct_id}customscript.zip"
+                )
+                customscript.grant_read(self.instance.role)
+                usrdata.add_commands(
+                    "yum install -y unzip",
+                    f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
+                    f"unzip customscript.zip",
+                    f"rm customscript.zip\n"
+                )
+        elif type(userdata) == dict and image == 'Appliance':
+            if 'Secrets' in userdata:
+                data = userdata['Secrets']
+                self.secretdata = secretsmanager.Secret.from_secret_complete_arn(
+                    self,
+                    "USRDATA",
+                    secret_complete_arn=data
+                ).secret_value
+                usrdata = ec2.UserData.custom(self.secretdata.to_string())
+                #usrdata = ec2.UserData.custom('')
         # create instance
         self.instance = ec2.Instance(
             self,
@@ -408,6 +411,8 @@ class InstanceStack(core.Stack):
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
         self.instance.role.add_managed_policy(pol)
+        pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMPatchAssociation')
+        self.instance.role.add_managed_policy(pol)
         # add managed policy based on resourcemap
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
@@ -438,6 +443,59 @@ class InstanceStack(core.Stack):
             )
         if self.ipstack == 'Ipv6':
             self.instance.instance.add_property_override("Ipv6AddressCount", 1)
+        #ssm association
+        if 'SSMDOC' in resmap['Mappings']['Resources'][res]:
+            if resmap['Mappings']['Resources'][res]['SSMDOC'] == True:
+                # add police
+                pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMDirectoryServiceAccess')
+                self.instance.role.add_managed_policy(pol)
+                # directory OU
+                splitdomain=ds.name.split('.')
+                directoryou = ''
+                for i in splitdomain:
+                    if i == splitdomain[0]:
+                        directoryou += str(f"OU={i},")
+                    elif i == splitdomain[len(splitdomain)-1]:
+                        directoryou += str(f"DC={i}")
+                    else:
+                        directoryou += str(f"DC={i},")
+                # SSM association
+                # ssm.CfnAssociation(
+                #     self,
+                #     f"{self.stack_name}SSMJoindoc",
+                #     name="AWS-JoinDirectoryServiceDomain",
+                #     association_name="JoinAD",
+                #     targets=targt
+                # )
+                # brute force since cdk module is not working
+                core.CfnInclude(
+                    self,
+                    "Include",
+                    template={
+                        "Resources": {
+                            "SSMAssociation": {
+                                "Type" : "AWS::SSM::Association",
+                                "Properties" : {
+                                    "AssociationName" : "JoinAD" ,
+                                    "Name" : "AWS-JoinDirectoryServiceDomain",
+                                    "Parameters" : {
+                                        "directoryId": [ds.ref],
+                                        "directoryName": [ds.name],
+                                        # "directoryOU": [directoryou],
+                                        # "dnsIpAddresses": [
+                                        #     core.Fn.import_value(f"{ds.stack.stack_name}Dns0"),
+                                        #     core.Fn.import_value(f"{ds.stack.stack_name}Dns1")
+                                        # ]
+                                    },
+                                    "Targets" : [{
+                                        "Key": "InstanceIds",
+                                        "Values": [self.instance.instance_id]
+                                    }]
+                                }
+                            }
+                        }
+                    }
+                )
         # some outputs
         core.CfnOutput(
             self,
