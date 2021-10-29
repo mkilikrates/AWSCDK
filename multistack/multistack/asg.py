@@ -180,6 +180,92 @@ class main(core.Stack):
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)
             resrole.add_managed_policy(manpol)
+        if 'IMAGE' in resmap['Mappings']['Resources'][res]:
+            imagekind = resmap['Mappings']['Resources'][res]['IMAGE']
+            if type(imagekind) == str:
+                if imagekind == 'AWSL2':
+                    machineimage = ec2.AmazonLinuxImage(
+                        edition=ec2.AmazonLinuxEdition.STANDARD,
+                        generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                    )
+                    image = 'Linux'
+                    usrdata = ec2.UserData.for_linux()
+                    usrdata.add_commands(
+                        "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                        "rm /usr/bin/aws",
+                        "unzip awscliv2.zip",
+                        "rm awscliv2.zip",
+                        "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                    )
+                elif imagekind == 'WIN2019FULL':
+                    machineimage = ec2.WindowsImage(
+                        version=ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
+                    )
+                    image = 'Windows'
+                    usrdata = ec2.UserData.for_windows()
+                    usrdata.add_commands(
+                        "$Path = $env:TEMP;",
+                        "$Installer = \"msiexec.exe\";",
+                        "$Package = \"AWSCLIV2.msi\";",
+                        "$arguments = \"/I $Path\$Package /qn\";",
+                        "Invoke-WebRequest \"https://awscli.amazonaws.com/AWSCLIV2.msi\" -OutFile     $Path\$Package;",
+                        "Start-Process $Installer -Wait -ArgumentList $arguments;"
+                        "Remove-Item $Path\$Package"
+                    )
+                else:
+                    machineimage = ec2.AmazonLinuxImage(
+                        edition=ec2.AmazonLinuxEdition.STANDARD,
+                        generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                    )
+                    image = 'Linux'
+                    usrdata = ec2.UserData.for_linux()
+                    usrdata.add_commands(
+                        "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                        "rm /usr/bin/aws",
+                        "unzip awscliv2.zip",
+                        "rm awscliv2.zip",
+                        "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                    )
+            elif type(imagekind) == dict:
+                if 'NAME' in imagekind:
+                    imagename = imagekind['NAME']
+                if 'FILTER' in imagekind:
+                    imagefilter = imagekind['FILTER']
+                machineimage = ec2.LookupMachineImage(
+                    name = imagename,
+                    owners=['aws-marketplace'], 
+                    filters=imagefilter
+                )
+                image = 'Appliance'
+            else:
+                machineimage = ec2.AmazonLinuxImage(
+                    edition=ec2.AmazonLinuxEdition.STANDARD,
+                    generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                )
+                image = 'Linux'
+                usrdata = ec2.UserData.for_linux()
+                usrdata.add_commands(
+                    "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                    "rm /usr/bin/aws",
+                    "unzip awscliv2.zip",
+                    "rm awscliv2.zip",
+                    "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                )
+        else:
+            machineimage = ec2.AmazonLinuxImage(
+                edition=ec2.AmazonLinuxEdition.STANDARD,
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            )
+            image = 'Linux'
+            usrdata = ec2.UserData.for_linux()
+            usrdata.add_commands(
+                "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                "rm /usr/bin/aws",
+                "unzip awscliv2.zip",
+                "rm awscliv2.zip",
+                "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+            )
+
         # create Auto Scalling Group
         self.asg = asg.AutoScalingGroup(
             self,
@@ -188,10 +274,7 @@ class main(core.Stack):
                 instance_class=ec2.InstanceClass(resclass),
                 instance_size=ec2.InstanceSize(ressize)
             ),
-            machine_image=ec2.AmazonLinuxImage(
-                edition=ec2.AmazonLinuxEdition.STANDARD,
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
-            ),
+            machine_image=machineimage,
             block_devices=myblkdev,
             vpc=self.vpc,
             security_group=self.asgsg,

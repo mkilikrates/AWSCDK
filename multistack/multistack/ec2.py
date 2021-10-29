@@ -72,12 +72,12 @@ class InstanceStack(core.Stack):
             )
         if allowall == True:
             self.ec2sg.add_ingress_rule(
-                ec2.Peer.any_ipv4,
+                ec2.Peer.any_ipv4(),
                 ec2.Port.all_traffic()
             )
             if self.ipstack == 'Ipv6':
                 self.ec2sg.add_ingress_rule(
-                    ec2.Peer.any_ipv6,
+                    ec2.Peer.any_ipv6(),
                     ec2.Port.all_traffic()
                 )
         if type(allowall) == int or type(allowall) == float:
@@ -496,6 +496,42 @@ class InstanceStack(core.Stack):
                         }
                     }
                 )
+        # self.rstpwdpolicy = iam.PolicyStatement(
+        #     actions=[
+        #         "ssm:PutParameter"
+        #     ],
+        #     effect=iam.Effect.ALLOW,
+        #     resources=[
+        #         f"arn:{core.Aws.PARTITION}:ssm:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:parameter/EC2Rescue/Passwords/i-*"
+        #     ]
+        # )
+        # Iam Role
+        # Attach policy to Iam Role
+        # self.instance.role.add_to_policy(self.rstpwdpolicy)
+        # core.CfnInclude(
+        #     self,
+        #     "IncludeResetAdmPwd",
+        #     template={
+        #         "Resources": {
+        #             "SSMAASSRSTPWD": {
+        #                 "Type" : "AWS::SSM::Association",
+        #                 "Properties" : {
+        #                     "AssociationName" : "ResetAdmPwd" ,
+        #                     "Name" : "AWSSupport-RunEC2RescueForWindowsTool",
+        #                     "Parameters" : {
+        #                         "Command": [
+        #                             "ResetAccess"
+        #                         ]
+        #                     },
+        #                     "Targets" : [{
+        #                         "Key": "InstanceIds",
+        #                         "Values": [self.instance.instance_id]
+        #                     }]
+        #                 }
+        #             }
+        #         }
+        #     }
+        # )
         # some outputs
         core.CfnOutput(
             self,

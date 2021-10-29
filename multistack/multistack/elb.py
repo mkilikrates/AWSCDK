@@ -30,7 +30,6 @@ class alb(core.Stack):
         # get config for resource
         res = res
         appname = resmap['Mappings']['Resources'][res]['NAME']
-        appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
         elbface = resmap['Mappings']['Resources'][res]['INTERNET']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         restype = resmap['Mappings']['Resources'][res]['Type']
@@ -38,26 +37,32 @@ class alb(core.Stack):
         reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
         restgport = resmap['Mappings']['Resources'][res]['TGPORT']
         resmon = resmap['Mappings']['Resources'][res]['MONITOR']
-        # get hosted zone id
-        self.hz = r53.HostedZone.from_lookup(
-            self,
-            f"{construct_id}:Domain",
-            domain_name=appdomain,
-            private_zone=False
-        )
-        # generate public certificate
-        if reslbport == 443:
-            self.cert = acm.Certificate(
+        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+            appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+            # get hosted zone id
+            self.hz = r53.HostedZone.from_lookup(
                 self,
-                f"{construct_id}:Certificate",
-                domain_name=f"{appname}.{appdomain}",
-                validation=acm.CertificateValidation.from_dns(self.hz)
+                f"{construct_id}:Domain",
+                domain_name=appdomain,
+                private_zone=False
             )
+            # generate public certificate
+            if reslbport == 443:
+                self.cert = acm.Certificate(
+                    self,
+                    f"{construct_id}:Certificate",
+                    domain_name=f"{appname}.{appdomain}",
+                    validation=acm.CertificateValidation.from_dns(self.hz)
+                )
+        else:
+            appdomain = ''
         if elbface == True:
             if self.ipstack == 'Ipv6':
                 lbstack = elb.IpAddressType.DUAL_STACK
             else:
                 lbstack = elb.IpAddressType.IPV4
+        else:
+            lbstack = elb.IpAddressType.IPV4
         if restype == 'clb':
             # create security group for LB
             self.lbsg = ec2.SecurityGroup(
@@ -84,8 +89,7 @@ class alb(core.Stack):
                 f"{construct_id}-CLB",
                 external_port=reslbport,
                 external_protocol=elb.ApplicationProtocol.HTTPS,
-                internal_port=restgport,
-                
+                internal_port=restgport
             )
 
         if restype == 'alb':
@@ -146,7 +150,7 @@ class alb(core.Stack):
                 self.elblistnrs = self.elb.add_listener(
                     f"{construct_id}:Listener_http",
                     port=reslbport,
-                    protocol=elb.ApplicationProtocol.HTTP,
+                    protocol=elb.ApplicationProtocol.HTTP
                 )
             # allow ingress access 
             if allowall == True:
@@ -231,16 +235,17 @@ class alb(core.Stack):
                     threshold=0,
                     comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
                 )
-        # create alias record target elb
-        r53.ARecord(
-            self,
-            f"{construct_id}:fqdn",
-            zone=self.hz,
-            record_name=f"{appname}.{appdomain}",
-            target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.elb))
-        )
-        core.CfnOutput(
-            self,
-            f"{construct_id}:APP DNS",
-            value=f"{appname}.{appdomain}"
-        )
+        if appdomain != '':
+            # create alias record target elb
+            r53.ARecord(
+                self,
+                f"{construct_id}:fqdn",
+                zone=self.hz,
+                record_name=f"{appname}.{appdomain}",
+                target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.elb))
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}:APP DNS",
+                value=f"{appname}.{appdomain}"
+            )

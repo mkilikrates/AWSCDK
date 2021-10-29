@@ -3,7 +3,7 @@ import os
 from aws_cdk import core
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ssm as ssm
-from aws_cdk.aws_cloudfront import Distribution
+from aws_cdk.aws_cloudfront import Distribution, FailoverStatusCode
 from multistack.vpc_empty import VPC as VPC
 from multistack.bastion import BastionStack as bastion
 from multistack.vpcflow import flowlogs
@@ -32,6 +32,7 @@ from multistack.eksctrl import (
     eksNGINXMNF as eksnginx
     )
 from multistack.cloudfront import CloudFrontStack as cf
+from multistack.servicediscovery import ServiceDiscovery as sd
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 remoteregion = 'eu-west-1'
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -43,23 +44,22 @@ gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
-VPCStack = VPC(app, "MY-VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 2, maxaz = 2, ipstack = ipstack)
-#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 's3Endpoint', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
+VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 #GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
 #GatewayStack.add_dependency(target=VPCStack)
-#NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'inspectvpc', res = 'netfwtgw', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
-#NetFWStack.add_dependency(target=VPCStack)
+#NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'fwvpcsubnets', res = 'netfwsinglevpc', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
+#NetFWStack.add_dependency(target=GatewayStack)
 #FlowLogsStack = flowlogs(app, "MY-VPCFLOW", env=myenv, logfor = 'default', vpcid = VPCStack.vpc.vpc_id)
 #FlowLogsStack.add_dependency(target=NetFWStack)
-#BationStack = bastion(app, "MY-BASTION", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
-#BationStack.add_dependency(target=VPCStack)
-#BationStack2 = bastion(app, "MY-BASTION2", env=myenv2, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
-#BationStack2.add_dependency(target=VPCStack2)
-ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
-ADStack.add_dependency(target=VPCStack)
-R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
-R53RsvStack.add_dependency(target=ADStack)
-#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxfe_echo', preflst = True, allowall = 80, ipstack = ipstack, allowsg = '', vpc = VPCStack.vpc)
+BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#BationStack.add_dependency(target=GatewayStack)
+SDStack = sd(app, "My-SD", env=myenv, res = 'ecsbe', ipstack = ipstack, elb = '', vpc = VPCStack.vpc)
+ECStack = ecs(app, "myecs", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = SDStack.servicename, vpc = VPCStack.vpc)
+ELBStack = alb(app, "MY-ELB", env=myenv, res = 'albbe80', preflst = False, allowsg = '', allowall = 80, ipstack = ipstack, tgrt = ECStack.srvc, vpc = VPCStack.vpc)
+#ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
+#ADStack.add_dependency(target=VPCStack)
+#R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
+#R53RsvStack.add_dependency(target=ADStack)
 #RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', vpc = VPCStack2.vpc, bastionsg = BationStack.bastionsg)
 #CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['active_directory'], vpc = VPCStack.vpc, dirid = ADStack.ds.ref)
 #CVPNStack.add_dependency(target=R53RsvStack)
@@ -79,15 +79,23 @@ R53RsvStack.add_dependency(target=ADStack)
 #EKSAppStack.add_dependency(EKSDNSStack)
 #AppStack = simpleapp(app, "ekstestapp", env=myenv, res = 'ekstestapp', preflst = False, allowsg = '', allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
 #AppStack.add_dependency(target=EKSNginxCtrlStack)
-#ECStack = ecs(app, "myecs", env=myenv, res = 'ecsfe', preflst = False, allowsg = '', allowall = 443, ipstack = ipstack, vpc = VPCStack.vpc)
-#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = True, allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 #DistributionStack = cf(app, "cfdistribution", env=myenv, res = 'elbfe', origin = ELBStack.elb.load_balancer_dns_name)
 #VPCStack2 = VPC(app, "MY-VPC2", env=myenv, res = 'vpcsec', cidrid = 1, natgw = 0, maxaz = 3, ipstack = ipstack)
 #BationStack2 = bastion(app, "MY-BASTION2", env=myenv, res = 'bastionsimplepriv', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc)
-#S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncust', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = '', remoteregion = remoteregion)
+#S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = 'vpncase', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = '', remoteregion = remoteregion)
 #S2SVPNStack.add_dependency(GatewayStack)
 #S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv2, route = route, vpnid = '', remoteregion = region, funct ='', res = 'vpnciscocsrbgp', vpc = VPCStack2.vpc, vpnstackname = 'MY-VPN')
 #S3VPNStack.add_dependency(S2SVPNStack)
-InstanceStack = instance(app, "My-instance", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, ds = ADStack.ds)
-InstanceStack.add_dependency(target=R53RsvStack)
+#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'myEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
+#VpcEndpointsStack.add_dependency(ECStack)
+#InstanceStack = instance(app, "My-linux", env=myenv, res = 'bastionprotect', preflst = False, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+#InstanceStack.add_dependency(target=VpcEndpointsStack)
+#VPNSRVStack2 = instance(app, "My-VPNSRV", env=myenv2, res = 'vpnciscocsrbgp', preflst = True, allowsg = '', instpol = '', userdata = { "Secrets" : S3VPNStack.mycustomresource.get_att_string('USRDATA')}, eipall = S3VPNStack.mycustomresource.get_att_string('EIPAllocid'), allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
+#InstanceStack2 = instance(app, "My-windows", env=myenv, res = 'winhost', preflst = False, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+#InstanceStack2.add_dependency(target=VpcEndpointsStack)
+#BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+#BationStack.add_dependency(target=GatewayStack2)
+#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'winhost', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
+#ASGStack.add_dependency(target=BationStack)
+
 app.synth()

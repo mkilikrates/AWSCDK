@@ -31,7 +31,7 @@ class internetfw(core.Stack):
         if 'INTNTIN' in resmap['Mappings']['Resources'][res]:
             resincoming = resmap['Mappings']['Resources'][res]['INTNTIN']
         else:
-            resincoming = ''
+            resincoming = False
         if 'LOGS' in resmap['Mappings']['Resources'][res]:
             reslogs = resmap['Mappings']['Resources'][res]['LOGS']
         else:
@@ -284,7 +284,8 @@ class internetfw(core.Stack):
                     stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn))
                     if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                         self.netfwrulegrpstatefulhd.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
-
+        else:
+            stateful_rule_group_references = None
         # create a lambda to deal with NetFW Endpoint routes
         # create Police for lambda function
         self.mylambdapolicy = iam.PolicyStatement(
@@ -415,7 +416,7 @@ class internetfw(core.Stack):
 
         endpointlist = self.netfirewall.attr_endpoint_ids
         index = 0
-        while index <= (len(endpointlist)):
+        while index <= (len(endpointlist)+1):
             fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             core.CfnOutput(
@@ -428,7 +429,7 @@ class internetfw(core.Stack):
                 for each in subtype:
                     for sub in subtype[each]:
                         subname = sub['NAME']
-                        if 'NETFWRT' in sub:
+                        if 'NETFWRT' in sub or 'NETFWINC' in sub or 'NETFWSUB' in sub:
                             # Get RTid
                             self.mycustomresource = core.CustomResource(
                                 self,
@@ -442,16 +443,17 @@ class internetfw(core.Stack):
                                     }
                                 ]
                             )
-                            idx = 0
-                            for rt in sub['NETFWRT']:
-                                ec2.CfnRoute(
-                                    self,
-                                    f"RTToVPCEnd{index}{each}-{subname}{idx}",
-                                    route_table_id=self.mycustomresource.get_att_string("RouteTableId"),
-                                    vpc_endpoint_id=fwendpoint_id,
-                                    destination_cidr_block=rt
-                                )
-                                idx = idx + 1
+                            if 'NETFWRT' in sub:
+                                idx = 0
+                                for rt in sub['NETFWRT']:
+                                    ec2.CfnRoute(
+                                        self,
+                                        f"RTToVPCEnd{index}{each}-{subname}{idx}",
+                                        route_table_id=self.mycustomresource.get_att_string("RouteTableId"),
+                                        vpc_endpoint_id=fwendpoint_id,
+                                        destination_cidr_block=rt
+                                    )
+                                    idx = idx + 1
                             if 'NETFWINC' in sub and resincoming == True:
                                 ec2.CfnRoute(
                                     self,
@@ -460,5 +462,42 @@ class internetfw(core.Stack):
                                     vpc_endpoint_id=fwendpoint_id,
                                     destination_cidr_block=self.mycustomresource.get_att_string("CidrBlock")
                                 )
+                            if 'NETFWSUB' in sub:
+                                idx = 0
+                                sb = ec2.SubnetType.PUBLIC
+                                idx2 = 0
+                                for subnet_id in self.vpc.select_subnets(subnet_type=sb).subnets:
+                                    if self.mycustomresource.get_att_string("CidrBlock") != subnet_id.ipv4_cidr_block:
+                                        ec2.CfnRoute(
+                                            self,
+                                            f"RTLocalSubToVPCEnd{index}{each}-{subname}-{idx}-{idx2}",
+                                            route_table_id=self.mycustomresource.get_att_string("RouteTableId"),
+                                            vpc_endpoint_id=fwendpoint_id,
+                                            destination_cidr_block=subnet_id.ipv4_cidr_block
+                                        )
+                                        idx2 = idx2 + 1
+                                sb = ec2.SubnetType.PRIVATE
+                                for subnet_id in self.vpc.select_subnets(subnet_type=sb).subnets:
+                                    if self.mycustomresource.get_att_string("CidrBlock") != subnet_id.ipv4_cidr_block:
+                                        ec2.CfnRoute(
+                                            self,
+                                            f"RTLocalSubToVPCEnd{index}{each}-{subname}-{idx}-{idx2}",
+                                            route_table_id=self.mycustomresource.get_att_string("RouteTableId"),
+                                            vpc_endpoint_id=fwendpoint_id,
+                                            destination_cidr_block=subnet_id.ipv4_cidr_block
+                                        )
+                                        idx2 = idx2 + 1
+                                sb = ec2.SubnetType.ISOLATED
+                                for subnet_id in self.vpc.select_subnets(subnet_type=sb).subnets:
+                                    if self.mycustomresource.get_att_string("CidrBlock") != subnet_id.ipv4_cidr_block:
+                                        ec2.CfnRoute(
+                                            self,
+                                            f"RTLocalSubToVPCEnd{index}{each}-{subname}-{idx}-{idx2}",
+                                            route_table_id=self.mycustomresource.get_att_string("RouteTableId"),
+                                            vpc_endpoint_id=fwendpoint_id,
+                                            destination_cidr_block=subnet_id.ipv4_cidr_block
+                                        )
+                                        idx2 = idx2 + 1
+                                    idx = idx + 1
             index = index + 1
 
