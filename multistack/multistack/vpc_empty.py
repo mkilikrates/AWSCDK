@@ -81,6 +81,7 @@ from aws_cdk import (
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+
 class VPC(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, ipstack, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)

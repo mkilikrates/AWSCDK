@@ -68,8 +68,10 @@ from aws_cdk import (
 from cdk_ec2_key_pair import KeyPair
 from aws_cdk.aws_s3_assets import Asset
 from zipfile import ZipFile
-account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
-region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+#account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
+#region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
+account = core.Aws.ACCOUNT_ID
+region = core.Aws.REGION
 class BastionStack(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -282,6 +284,9 @@ class BastionStack(core.Stack):
         # create instance profile
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
+        self.bastion.instance.role.add_managed_policy(pol)
+        # add SSM permissions to update instance
+        pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMPatchAssociation')
         self.bastion.instance.role.add_managed_policy(pol)
         # add managed policy based on resourcemap
         if resmanpol !='':

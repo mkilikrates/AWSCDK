@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import requests
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_networkfirewall as netfw,
@@ -284,6 +285,36 @@ class internetfw(core.Stack):
                     stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn))
                     if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                         self.netfwrulegrpstatefulhd.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
+                # # SURICATA RULE
+                if 'SuricataRules' in resmap['Mappings']['Resources'][statefulname]:
+                    suricata = resmap['Mappings']['Resources'][statefulname]['SuricataRules']
+                    if type(suricata) == str:
+                         suricatarules = suricata
+                    elif type(suricata) == dict:
+                        if 'URL' in suricata:
+                            url = suricata['URL']
+                            suricatarules = requests.get(url).content
+                        elif 'FILE' in suricata:
+                            file = suricata['FILE']
+                            suricatarules = open(file, "r").read()
+                    self.netfwrulegrpsuricataprop = netfw.CfnRuleGroup.RuleGroupProperty(
+                        rule_variables=None,
+                        rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
+                            rules_source_list=None,
+                            rules_string=suricatarules
+                        )
+                    )
+                    self.netfwrulegrpsuricata = netfw.CfnRuleGroup(
+                        self,
+                        f"{construct_id}MyNetFWRuleGrpSuricata",
+                        capacity=netfwrlgrpcap,
+                        rule_group_name=f"{construct_id}MyNetFWRuleGrpSuricata",
+                        type="STATEFUL",
+                        description="Stateful Rule Group Suricata Rules",
+                        rule_group=self.netfwrulegrpsuricataprop
+                    )
+                    # add rule group to police
+                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpsuricata.attr_rule_group_arn))
         else:
             stateful_rule_group_references = None
         # create a lambda to deal with NetFW Endpoint routes

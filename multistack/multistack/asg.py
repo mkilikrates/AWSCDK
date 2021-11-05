@@ -170,12 +170,13 @@ class main(core.Stack):
                 )
         # create instance profile for SSM patching
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
+        pol1 = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMPatchAssociation')
         resrole = iam.Role(
             self,
             f"{construct_id}Role",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
             description=f"Role for Auto Scale Group",
-            managed_policies=[pol]
+            managed_policies=[pol, pol1]
         )
         if resmanpol !='':
             manpol = iam.ManagedPolicy.from_aws_managed_policy_name(resmanpol)

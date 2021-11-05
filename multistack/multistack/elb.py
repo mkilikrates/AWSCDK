@@ -213,10 +213,18 @@ class alb(core.Stack):
                     certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
                 )
             else:
+                if 'PROTO' in resmap['Mappings']['Resources'][res]:
+                    proto = resmap['Mappings']['Resources'][res]['PROTO']
+                    if proto == 'TCP':
+                        protocol = elb.Protocol('TCP')
+                    elif proto == 'UDP':
+                        protocol = elb.Protocol('UDP')
+                else:
+                    protocol = elb.Protocol('UDP')
                 self.elblistnrs = self.elb.add_listener(
-                    f"{construct_id}:Listener_tcp",
+                    f"{construct_id}:Listener",
                     port=reslbport,
-                    protocol=elb.Protocol('TCP'),
+                    protocol=protocol,
                 )
             # allow egress access to target
             self.tgrp = self.elblistnrs.add_targets(
