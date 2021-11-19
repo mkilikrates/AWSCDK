@@ -10,6 +10,7 @@ from aws_cdk import (
     aws_certificatemanager as acm,
     aws_route53 as r53,
     aws_route53_targets as r53tgs,
+    aws_iam as iam,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
@@ -220,7 +221,7 @@ class alb(core.Stack):
                     elif proto == 'UDP':
                         protocol = elb.Protocol('UDP')
                 else:
-                    protocol = elb.Protocol('UDP')
+                    protocol = elb.Protocol('TCP')
                 self.elblistnrs = self.elb.add_listener(
                     f"{construct_id}:Listener",
                     port=reslbport,
@@ -232,6 +233,30 @@ class alb(core.Stack):
                 port=restgport,
                 targets=[tgrt]
             )
+            if 'Principals' in resmap['Mappings']['Resources'][res]:
+                resprinc = resmap['Mappings']['Resources'][res]['Principals']
+                if type(resprinc) == str:
+                    principal = []
+                    principal.append(iam.ArnPrincipal(resprinc))
+                if type(resprinc) == list:
+                    for each in resprinc:
+                        principal.append(iam.ArnPrincipal(each))
+                if 'AUTOACCEPT' in resmap['Mappings']['Resources'][res]:
+                    resaccept = resmap['Mappings']['Resources'][res]['AUTOACCEPT']
+                else:
+                    resaccept = True
+                self.vpcendpointsrv = ec2.VpcEndpointService(
+                    self,
+                    f"{construct_id}:VPCEndpointService",
+                    vpc_endpoint_service_load_balancers=[self.elb],
+                    acceptance_required=resaccept,
+                    allowed_principals=principal
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}:VPCEndpointServiceName",
+                    value=self.vpcendpointsrv.vpc_endpoint_service_name
+                )
             if resmon == True:
                 # create alarm for UnHealthyHostCount
                 self.alarmtargrunhealth = self.tgrp.metric_un_healthy_host_count()

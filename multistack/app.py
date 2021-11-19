@@ -44,11 +44,8 @@ gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+VPCStack = VPC(app, "VPC", env=myenv, res = '', cidrid = 0, natgw = 6, maxaz = 6, ipstack = ipstack)
 BationStack = bastion(app, "Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
-ASGStack = asg(app, "ASG", env=myenv, res = 'dnsmasqpriv', preflst = False, allowall = True, ipstack = ipstack, allowsg = BationStack.bastionsg, vpc = VPCStack.vpc)
-ASGStack.add_dependency(target=BationStack)
-ELBStack = alb(app, "NLB", env=myenv, res = 'nlbbeDNS', preflst = False, allowsg = BationStack.bastionsg, allowall = 53, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
