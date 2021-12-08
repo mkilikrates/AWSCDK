@@ -34,18 +34,27 @@ from multistack.eksctrl import (
 from multistack.cloudfront import CloudFrontStack as cf
 from multistack.servicediscovery import ServiceDiscovery as sd
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
-remoteregion = 'us-west-2'
+remoteregion = 'eu-west-1'
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"]))
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
-
 route = 'bgp'
 gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = '', cidrid = 0, natgw = 6, maxaz = 6, ipstack = ipstack)
-BationStack = bastion(app, "Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+VPCStack = VPC(app, "VPC", env=myenv, res = 'vpcws', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+GatewayStack = mygw(app, "TGW", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
+GatewayStack.add_dependency(target=VPCStack)
+InstanceStack = instance(app, "My-windows", env=myenv, res = 'winbast', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+InstanceStack.add_dependency(target=GatewayStack)
+VPCStack2 = VPC(app, "VPC2", env=myenv, res = 'vpcrds', cidrid = 1, natgw = 2, maxaz = 2, ipstack = ipstack)
+VPCStack2.add_dependency(target=InstanceStack)
+GatewayStack2 = mygw(app, "TGW2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gwId, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcrds', bastionsg = InstanceStack.ec2sg, tgwstack = GatewayStack, cross = False)
+GatewayStack2.add_dependency(target=VPCStack2)
+RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack2.vpc)
+RDSStack.add_dependency(target=GatewayStack2)
+
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)

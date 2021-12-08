@@ -130,6 +130,14 @@ def lambda_handler(event, context):
         "Reason": "Nothing to do",
         "Data": {}
     }
+    startact = ''
+    keych = ''
+    ike = ''
+    esp = ''
+    rkfz = ''
+    rkmg = ''
+    rplw = ''
+    dpdact = ''
     if vpnstackname.startswith('vpn-'):
         vpnid = vpnstackname
     else:

@@ -16,18 +16,17 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class myrds(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, vpc = ec2.Vpc, bastionsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
-        self.bastionsg = bastionsg
+        self.ipstack = ipstack
         # get prefix list from file to allow traffic from the office
         mymap = core.CfnMapping(
             self,
             f"{construct_id}Map",
             mapping=zonemap["Mappings"]["RegionMap"]
         )
-        srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # create security group for rds
         self.rdssg = ec2.SecurityGroup(
             self,
@@ -35,19 +34,43 @@ class myrds(core.Stack):
             allow_all_outbound=True,
             vpc=self.vpc
         )
-         # add ingress rules
-        self.rdssg.add_ingress_rule(
-            ec2.Peer.prefix_list(srcprefix),
-            ec2.Port.all_traffic()
-        )
-        self.rdssg.add_ingress_rule(
-            self.bastionsg,
-            ec2.Port.all_traffic()
-        )
+        if preflst == True:
+            srcprefix = mymap.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+            # add ingress rules
+            self.rdssg.add_ingress_rule(
+                ec2.Peer.prefix_list(srcprefix),
+                ec2.Port.all_traffic()
+            )
+        if allowsg != '':
+            self.rdssg.add_ingress_rule(
+                allowsg,
+                ec2.Port.all_traffic()
+            )
         self.rdssg.add_ingress_rule(
             self.rdssg,
             ec2.Port.all_traffic()
         )
+        if allowall == True:
+            self.rdssg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.all_traffic()
+            )
+            if self.ipstack == 'Ipv6':
+                self.rdssg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.all_traffic()
+                )
+        if type(allowall) == int or type(allowall) == float:
+            self.rdssg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(allowall)
+            )
+            if self.ipstack == 'Ipv6':
+                self.rdssg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
+
         # get data for rds resource
         res = res
         resname = resmap['Mappings']['Resources'][res]['NAME']

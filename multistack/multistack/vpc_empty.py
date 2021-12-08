@@ -108,6 +108,12 @@ class VPC(core.Stack):
             # get prefix list from file to allow traffic from the office
             vcpcidr = zonemap['Mappings']['RegionMap'][region]['CIDR'][self.cidrid]
             resname = resmap['Mappings']['Resources'][res]['NAME']
+            if 'AZS' in resmap['Mappings']['Resources'][res]:
+                azs = resmap['Mappings']['Resources'][res]['AZS']
+                self.node.set_context(
+                    key=f'availability-zones:account={self.account}:region={self.region}',
+                    value=azs
+                )
             if 'SUBNETS' in resmap['Mappings']['Resources'][res]:
                 self.sub = []
                 for subtype in resmap['Mappings']['Resources'][res]['SUBNETS']:
