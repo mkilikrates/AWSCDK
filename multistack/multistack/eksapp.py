@@ -106,6 +106,7 @@ class MyAppStack(core.Stack):
             sub = self.vpc.select_subnets(subnet_group_name=ressubgrp, one_per_az=True).subnet_ids
             sublist = ", ".join(str(index) for index in sub)
             mysvcannot['alb.ingress.kubernetes.io/subnets'] = sublist
+            mysvcannot['alb.ingress.kubernetes.io/target-type'] = 'ip'
         if reselb == 'nlb':
             # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/service/annotations/
             mysvcannot['service.beta.kubernetes.io/aws-load-balancer-type'] = reselb
@@ -249,19 +250,7 @@ class MyAppStack(core.Stack):
                             'http': {
                                 'paths' : [
                                     {
-                                        'path' : '/*',
-                                        'pathType' : 'Prefix',
-                                        'backend' : {
-                                            'service' : {
-                                                'name' : "ssl-redirect",
-                                                'port' : {
-                                                    'name' : "use-annotation"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    {
-                                        'path' : '/*',
+                                        'path' : '/',
                                         'pathType' : 'Prefix',
                                         'backend' : {
                                             'service' : {
@@ -278,6 +267,22 @@ class MyAppStack(core.Stack):
                     ]
                 }
             }
+            if reslbport == 443:
+                self.myingress['spec']['rules'].append(
+                    {
+                        'path' : '/*',
+                        'pathType' : 'Prefix',
+                        'backend' : {
+                            'service' : {
+                                'name' : "ssl-redirect",
+                                'port' : {
+                                    'name' : "use-annotation"
+                                }
+                            }
+                        }
+                    }
+                )
+
             # deploy alb
             self.manif = eks.KubernetesManifest(
                 self,

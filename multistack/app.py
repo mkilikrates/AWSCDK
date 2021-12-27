@@ -27,8 +27,9 @@ from multistack.netfw import internetfw as netfw
 from multistack.ec2 import InstanceStack as instance
 from multistack.eksctrl import (
     eksDNS as eksdns,
-    eksELB as ekselb,
+    eksELBHelm as ekselb,
     eksING as eksing,
+    ekscwinsights as eksinsights,
     eksNGINXMNF as eksnginx
     )
 from multistack.cloudfront import CloudFrontStack as cf
@@ -43,17 +44,20 @@ gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'vpcws', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-GatewayStack = mygw(app, "TGW", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = '', tgwstack = '', cross = False)
-GatewayStack.add_dependency(target=VPCStack)
-InstanceStack = instance(app, "My-windows", env=myenv, res = 'winbast', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
-InstanceStack.add_dependency(target=GatewayStack)
-VPCStack2 = VPC(app, "VPC2", env=myenv, res = 'vpcrds', cidrid = 1, natgw = 2, maxaz = 2, ipstack = ipstack)
-VPCStack2.add_dependency(target=InstanceStack)
-GatewayStack2 = mygw(app, "TGW2", env=myenv, gwtype = gwtype, gwid = GatewayStack.gwId, res = 'tgw', route = route, ipstack = ipstack, vpc = VPCStack2.vpc, vpcname = 'vpcrds', bastionsg = InstanceStack.ec2sg, tgwstack = GatewayStack, cross = False)
-GatewayStack2.add_dependency(target=VPCStack2)
-RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack2.vpc)
-RDSStack.add_dependency(target=GatewayStack2)
+VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastion', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
+BationStack.add_dependency(target=VPCStack)
+EKStack = eks(app, "myeks", env=myenv, res = 'myeksprivec2', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ipstack = ipstack, role = '', vpc = VPCStack.vpc)
+EKStack.add_dependency(target=BationStack)
+EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSDNSStack.add_dependency(target=EKStack)
+EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSELBStack.add_dependency(target=EKStack)
+EKSInsightsStack = eksinsights(app, "insights", env=myenv, ekscluster = EKStack.eksclust)
+EKSInsightsStack.add_dependency(target=EKStack)
+EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbbe', preflst = True, allowsg = BationStack.bastionsg, allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
+EKSAppStack.add_dependency(EKSELBStack)
+EKSAppStack.add_dependency(EKSDNSStack)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)

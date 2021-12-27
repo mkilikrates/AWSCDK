@@ -41,7 +41,7 @@ class Albctrl(cdk8s.Chart):
             self,
             f"{construct_id}-alb",
             cluster_name=self.clustername,
-            create_service_account=False,
+            create_service_account=True,
         )
         albAwsLoadBalancePolicy.add_policy(albVersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2.value, 'aws-load-balancer-controller')
 
@@ -56,7 +56,7 @@ class Ingctrl(cdk8s.Chart):
             cluster_name=self.clustername,
             create_service_account=False,
         )
-        ingAwsLoadBalancePolicy.add_policy(ingVersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2.value, 'aws-ingress-controller')
+        ingAwsLoadBalancePolicy.add_policy(ingVersionsLists.AWS_LOAD_BALANCER_CONTROLLER_POLICY_V2.value, 'aws-load-balancer-controller')
 
 class extdns(cdk8s.Chart):
     def __init__(self, scope: constructs.Construct, construct_id: str, svcaccount = eks.ServiceAccount, **kwargs) -> None:

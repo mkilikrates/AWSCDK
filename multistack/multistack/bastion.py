@@ -151,7 +151,7 @@ class BastionStack(core.Stack):
             self.key = KeyPair(
                 self,
                 f"{keyname}",
-                name=f"{construct_id}{keyname}-{region}",
+                name=f"{construct_id}{keyname}",
                 description='Key Pair from CDK automation',
                 store_public_key=True
             )

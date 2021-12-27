@@ -31,10 +31,8 @@ PyYAML
 constructs
 requests
 cdk8s
-cdk8s_plus
-#cdk8s_plus_17
+cdk8s-plus-22
 cdk8s_external_dns
 cdk8s_aws_alb_ingress_controller
 cdk8s_aws_load_balancer_controller
-# error with cdk8s_plus_17 and cdk8s-0.33.0 - https://github.com/cdk8s-team/cdk8s/issues/479
 -e .

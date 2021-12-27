@@ -47,6 +47,10 @@ class EksStack(core.Stack):
             resrole = resmap['Mappings']['Resources'][res]['ROLEADM']
         else:
             resrole = ''
+        if 'INSIGHTS' in resmap['Mappings']['Resources'][res]:
+            containerinsights = resmap['Mappings']['Resources'][res]['INSIGHTS']
+        else:
+            containerinsights = False
         if resendp == True:
             eksendpt = eks.EndpointAccess.PUBLIC
         if resendp == False:
@@ -156,6 +160,7 @@ class EksStack(core.Stack):
                         instance_size=ec2.InstanceSize(ressize),
                     ),
                     default_capacity_type=eks.DefaultCapacityType.NODEGROUP,
+                    cluster_name=resname,
                     core_dns_compute_type=eksdnstype,
                     endpoint_access=eksendpt,
                     vpc=self.vpc,
@@ -174,6 +179,7 @@ class EksStack(core.Stack):
                     f"{construct_id}-ekscluster",
                     default_capacity=0,
                     core_dns_compute_type=eksdnstype,
+                    cluster_name=resname,
                     endpoint_access=eksendpt,
                     vpc=self.vpc,
                     version=eksvers,
@@ -222,6 +228,12 @@ class EksStack(core.Stack):
                     # add SSM permissions to update instance
                     pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
                     self.eksnodeasg.role.add_managed_policy(pol)
+                    pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMPatchAssociation')
+                    self.eksnodeasg.role.add_managed_policy(pol)
+                    pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonEKSWorkerNodePolicy')
+                    self.eksnodeasg.role.add_managed_policy(pol)
+                    pol = iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchAgentServerPolicy')
+                    self.eksnodeasg.role.add_managed_policy(pol)
                     self.eksnodeasg.add_user_data(
                         'yum install -y amazon-ssm-agent\n'
                         'systemctl enable amazon-ssm-agent\n'
@@ -268,6 +280,11 @@ class EksStack(core.Stack):
             self.eksclust.aws_auth.add_masters_role(tmpltrole)
 
         # outputs
+        core.CfnOutput(
+            self,
+            f"{construct_id}-eksclusterName",
+            value=self.eksclust.cluster_name
+        )
         core.CfnOutput(
             self,
             f"{construct_id}-eksclusterSG",

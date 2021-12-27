@@ -260,6 +260,27 @@ class InstanceStack(core.Stack):
                     "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
                 )
        
+        # create instance
+        self.instance = ec2.Instance(
+            self,
+            f"{construct_id}",
+            instance_type=ec2.InstanceType.of(
+                instance_class=ec2.InstanceClass(resclass),
+                instance_size=ec2.InstanceSize(ressize)
+            ),
+            machine_image=machineimage,
+            vpc=self.vpc,
+            block_devices=myblkdev,
+            instance_name=resname,
+            security_group=self.ec2sg,
+            source_dest_check=ressrcdstchk,
+            user_data=None,
+            user_data_causes_replacement=resusrdtrepl,
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_group_name=ressubgrp,
+                one_per_az=True
+            )
+        )
         if userdata == '':
             if 'USRFILE' in resmap['Mappings']['Resources'][res]:
                 userdata = resmap['Mappings']['Resources'][res]['USRFILE']
@@ -267,6 +288,7 @@ class InstanceStack(core.Stack):
             usrdatafile = userdata
             userdata = open(usrdatafile, "r").read()
             usrdata.add_commands(userdata)
+            self.instance.instance.add_property_override("UserData", usrdata)
         elif type(userdata) == list and image == 'Linux':
             usrdatalst = []
             with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
@@ -289,6 +311,7 @@ class InstanceStack(core.Stack):
                     f"unzip customscript.zip",
                     f"rm customscript.zip\n"
                 )
+            self.instance.instance.add_property_override("UserData", usrdata)
         elif type(userdata) == dict and image == 'Appliance':
             if 'Secrets' in userdata:
                 data = userdata['Secrets']
@@ -298,29 +321,7 @@ class InstanceStack(core.Stack):
                     secret_complete_arn=data
                 ).secret_value
                 usrdata = ec2.UserData.custom(self.secretdata.to_string())
-                #usrdata = ec2.UserData.custom('')
-        # create instance
-        self.instance = ec2.Instance(
-            self,
-            f"{construct_id}",
-            instance_type=ec2.InstanceType.of(
-                instance_class=ec2.InstanceClass(resclass),
-                instance_size=ec2.InstanceSize(ressize)
-            ),
-            machine_image=machineimage,
-            vpc=self.vpc,
-            block_devices=myblkdev,
-            instance_name=resname,
-            security_group=self.ec2sg,
-            source_dest_check=ressrcdstchk,
-            user_data=usrdata,
-            user_data_causes_replacement=resusrdtrepl,
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_group_name=ressubgrp,
-                one_per_az=True
-            )
-        )
-        #self.secretdata.grant_read(self.instance.role)
+                self.instance.instance.add_property_override("UserData", usrdata)
         if type(userdata) == dict and image == 'Appliance':
             self.instance.instance.add_property_deletion_override("UserData")
             usrdata = self.secretdata.to_string()
