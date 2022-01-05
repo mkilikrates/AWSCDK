@@ -159,28 +159,9 @@ class S2SVPNS3(core.Stack):
             value=funct,
             export_name=f"{construct_id}:LambdaArn"
         )
-        # # create Police for lambda function
-        # self.vpnreadpolicy = iam.PolicyStatement(
-        #     actions=[
-        #         "s3:GetObject",
-        #         "s3:ListBucket"
-        #     ],
-        #     resources=[
-        #         f"arn:aws:s3:::{self.bucketname}",
-        #         f"arn:aws:s3:::{self.bucketname}/vpn/{self.vpnid}*"
-        #     ],
-        #     effect=iam.Effect.ALLOW
-        # )
-        # self.bkt = core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:bucketname",
-        #     value=self.bucketname,
-        #     export_name=f"{construct_id}:bucketname"
-        # )
-        # self.vpndir = core.CfnOutput(
-        #     self,
-        #     f"{construct_id}:folder",
-        #     value=f"/vpn/{self.vpnid}/",
-        #     export_name=f"{construct_id}:folder"
-        # )
-        
+        self.secret = core.CfnOutput(
+            self,
+            f"{construct_id}:SecretArn",
+            value=self.mycustomresource.get_att_string("USRDATA"),
+            export_name=f"{construct_id}:SecretArn"
+        )

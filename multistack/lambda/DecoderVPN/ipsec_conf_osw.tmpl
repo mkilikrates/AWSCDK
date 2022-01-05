@@ -46,8 +46,8 @@ conn {{ vgw_out_addr }}
 {% if rkfz != "" %}
     rekeyfuzz={{ rkfz }}
 {% endif %}
-{% if ipsec_fragmentation_before_encryption != "" %}
-    fragmentation={{ ipsec_fragmentation_before_encryption }}
+{% if ipsec_fragmentation_before_encryption == "true" %}
+    fragmentation={{ yes }}
 {% endif %}
 {% if rplw != "" %}
     replay_window={{ rplw }}

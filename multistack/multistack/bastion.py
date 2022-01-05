@@ -127,12 +127,12 @@ class BastionStack(core.Stack):
             )
         if allowall == True:
             self.bastionsg.add_ingress_rule(
-                ec2.Peer.any_ipv4,
+                ec2.Peer.any_ipv4(),
                 ec2.Port.all_traffic()
             )
             if self.ipstack == 'Ipv6':
                 self.bastionsg.add_ingress_rule(
-                    ec2.Peer.any_ipv6,
+                    ec2.Peer.any_ipv6(),
                     ec2.Port.all_traffic()
                 )
         if type(allowall) == int or type(allowall) == float:

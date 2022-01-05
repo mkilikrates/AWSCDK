@@ -1,6 +1,6 @@
 {% if tnum == 1 %}
  router bgp {{ cgw_bgp_asn }}
- timers 5 {{cgw_bgp_ht}}
+ timers bgp 5 {{cgw_bgp_ht}}
  network {{localcidr}}
 {% endif %}
 ! tunnel# {{ tnum }}
@@ -10,7 +10,7 @@
  neighbor {{ vgw_in_v6addr }} next-hop-self
 {% else %}
  neighbor {{ vgw_in_addr }} remote-as {{ vgw_bgp_asn }}
- neighbor {{ vgw_in_v6addr }} update-source {{ cgw_in_addr }}
+ neighbor {{ vgw_in_addr }} update-source {{ cgw_in_addr }}
  neighbor {{ vgw_in_addr }} next-hop-self
 !
 {% endif %}

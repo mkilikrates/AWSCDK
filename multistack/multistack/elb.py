@@ -87,11 +87,13 @@ class alb(core.Stack):
             )
             # configure listener
             self.elblistnrs = self.elb.add_listener(
-                f"{construct_id}-CLB",
                 external_port=reslbport,
-                external_protocol=elb.ApplicationProtocol.HTTPS,
                 internal_port=restgport
             )
+            # need to fix this part
+            # self.tgrp = self.elb.add_target(
+            #     target=tgrt
+            # )
 
         if restype == 'alb':
             # create security group for LB

@@ -112,6 +112,22 @@ def describevpn(vpnid,vpnregion):
     except Exception as e:
         logger.info('EC2: VPN Configuration Error: {}'.format(e))
 
+def create_presigned_url(bucketname, myobj, expiration=3600):
+    # remove folder and vpn files
+    try:
+        action = s3.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': bucketname,
+                'Key': myobj,
+            },
+            ExpiresIn=expiration
+        )
+        logger.info('S3: PreSigned URL creation Success: {}'.format(action))
+        return action
+    except Exception as e:
+        logger.info('S3: PreSigned URL creation Error: {}'.format(e))
+
 def lambda_handler(event, context):
     logger.info('event: {}'.format(event))
     logger.info('context: {}'.format(context))
@@ -554,75 +570,6 @@ def lambda_handler(event, context):
                         cph2dh = 'group2'
                         cespenc = 'esp-aes'
                         cespint = 'esp-sha-hmac'
-                # generate installation files
-                # bash file to install strongswan
-                if ec2type == 'strongswan' and bucketname != '':
-                    installlstswan = []
-                    installlstswan.append("amazon-linux-extras install -y epel")
-                    installlstswan.append("yum install -y strongswan")
-                    installlstswan.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
-                    if type(localcidr) == list:
-                        for each in localcidr:
-                            installlstswan.append(f"route add -net {each} gw $GATEWAY")
-                        installlstswan.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
-                    else:
-                        installlstswan.append(f"route add -net {localcidr} gw $GATEWAY")
-                        installlstswan.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
-                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.conf /etc/strongswan/ipsec.conf")
-                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/strongswan/ipsec.secrets")
-                    installlstswan.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/strongswan/ipsec.d/aws-updown.sh")
-                    installlstswan.append("systemctl enable strongswan")
-                    if routetype == 'bgp':
-                        installlstswan.append("yum install -y quagga")
-                        installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
-                        installlstswan.append("systemctl enable zebra")
-                        installlstswan.append("systemctl enable bgpd")
-                    installlstswan.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
-                    installlstswan.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
-                    installlstswan.append("systemctl restart sshd.service")
-                    installlstswan.append("yum update -y")
-                    installlstswan.append("reboot")
-                    output = '\n'.join(installlstswan)
-                    mycfgfile = f"{mylocalfolder}install_strongswan.sh"
-                    if tnum == 1:
-                        outputfile = open(mycfgfile, 'w')
-                        outputfile.write(output)
-                        outputfile.close()
-                        logger.info('Writing cfg file Success: {}'.format(mycfgfile))
-                # bash file to install libreswan
-                if ec2type == 'libreswan' and bucketname != '':
-                    installlstlibre = []
-                    installlstlibre.append("amazon-linux-extras install -y epel")
-                    installlstlibre.append("yum install -y libreswan")
-                    installlstlibre.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
-                    if type(localcidr) == list:
-                        for each in localcidr:
-                            installlstlibre.append(f"route add -net {each} gw $GATEWAY")
-                        installlstlibre.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
-                    else:
-                        installlstlibre.append(f"route add -net {localcidr} gw $GATEWAY")
-                        installlstlibre.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
-                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}{vpnid}.conf /etc/ipsec.d/{vpnid}.conf")
-                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/ipsec.d/ipsec.secrets")
-                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/ipsec.d/aws-updown.sh")
-                    installlstlibre.append("systemctl enable ipsec.service")
-                    if routetype == 'bgp':
-                        installlstlibre.append("yum install -y quagga")
-                        installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
-                        installlstlibre.append("systemctl enable zebra")
-                        installlstlibre.append("systemctl enable bgpd")
-                    installlstlibre.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
-                    installlstlibre.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
-                    installlstlibre.append("systemctl restart sshd.service")
-                    installlstlibre.append("yum update -y")
-                    installlstlibre.append("reboot")
-                    output = '\n'.join(installlstlibre)
-                    mycfgfile = f"{mylocalfolder}install_libreswan.sh"
-                    if tnum == 1:
-                        outputfile = open(mycfgfile, 'w')
-                        outputfile.write(output)
-                        outputfile.close()
-                        logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 # generate config files
                 # secret file for openswan/libreswan
                 if ec2type == 'strongswan' or ec2type == 'libreswan':                
@@ -790,60 +737,221 @@ def lambda_handler(event, context):
                     outputfile.close()
                     logger.info('Writing cfg file Success: {}'.format(mycfgfile))
                 tnum += 1
-            # upload files
-            # install_strongswan.sh
+            # generate installation files
             if ec2type == 'strongswan':
-                mycfgfile = f"{mylocalfolder}install_strongswan.sh"
-                myobj = f"{mys3vpnfolder}install_strongswan.sh"
                 if bucketname != '':
+                    # bash file to install strongswan
+                    installlstswan = []
+                    installlstswan.append("amazon-linux-extras install -y epel")
+                    installlstswan.append("yum install -y strongswan")
+                    installlstswan.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                    if type(localcidr) == list:
+                        for each in localcidr:
+                            installlstswan.append(f"route add -net {each} gw $GATEWAY")
+                        installlstswan.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    else:
+                        installlstswan.append(f"route add -net {localcidr} gw $GATEWAY")
+                        installlstswan.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.conf /etc/strongswan/ipsec.conf")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/strongswan/ipsec.secrets")
+                    installlstswan.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/strongswan/ipsec.d/aws-updown.sh")
+                    installlstswan.append("systemctl enable strongswan")
+                    if routetype == 'bgp':
+                        installlstswan.append("yum install -y quagga")
+                        installlstswan.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
+                        installlstswan.append("systemctl enable zebra")
+                        installlstswan.append("systemctl enable bgpd")
+                    installlstswan.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                    installlstswan.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                    installlstswan.append("systemctl restart sshd.service")
+                    installlstswan.append("yum update -y")
+                    installlstswan.append("reboot")
+                    output = '\n'.join(installlstswan)
+                    mycfgfile = f"{mylocalfolder}install_strongswan.sh"
+                    outputfile = open(mycfgfile, 'w')
+                    outputfile.write(output)
+                    outputfile.close()
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                    # upload install_strongswan.sh
+                    myobj = f"{mys3vpnfolder}install_strongswan.sh"
                     fileupload(mycfgfile, bucketname, myobj)
-                with open(mycfgfile, 'r') as f:
-                    lines = f.read()
-                secretdata = base64.b64encode(lines.encode("ascii")).decode("ascii")
-                if eventtype == 'Create':
-                    keylist = {}
-                    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
-                    keylist['Description'] = f"StrongSwan User-Data"
-                    keylist['SecretString'] = f"{secretdata}"
-                    secretsput = createsecret(keylist, region)
-                elif eventtype == 'Update':
-                    keylist = {}
-                    keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
-                    keylist['SecretString'] = f"{secretdata}"
-                    secretsput = putsecret(keylist, region)
-                if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
-                    logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
-                else:
-                    logger.info('Secrets: Put Secret Success! : {}'.format(secretsput))
-                    response["Data"]["USRDATA"] = secretsput['ARN']
                 # ipsec.conf
                 mycfgfile = f"{mylocalfolder}ipsec.conf"
                 myobj = f"{mys3vpnfolder}ipsec.conf"
                 if bucketname != '':
                     fileupload(mycfgfile, bucketname, myobj)
-            # install_libreswan.sh
-            if ec2type == 'libreswan':
-                mycfgfile = f"{mylocalfolder}install_libreswan.sh"
-                myobj = f"{mys3vpnfolder}install_libreswan.sh"
-                if bucketname != '':
-                    fileupload(mycfgfile, bucketname, myobj)
-                # vpnid.conf
-                mycfgfile = f"{mylocalfolder}{vpnid}.conf"
-                myobj = f"{mys3vpnfolder}{vpnid}.conf"
-                if bucketname != '':
-                    fileupload(mycfgfile, bucketname, myobj)
-            if ec2type == 'strongswan' or ec2type == 'libreswan':
+                    urlipsecconf = create_presigned_url(bucketname, myobj)
                 # ipsec.secrets
                 mycfgfile = f"{mylocalfolder}ipsec.secrets"
                 myobj = f"{mys3vpnfolder}ipsec.secrets"
                 if bucketname != '':
                     fileupload(mycfgfile, bucketname, myobj)
+                    urlsecrets = create_presigned_url(bucketname, myobj)
+                myobj = "vpn/common/aws-updown.sh"
+                urlcommon = create_presigned_url(bucketname, myobj)
                 if routetype == 'bgp':
                     # bgp.conf
                     mycfgfile = f"{mylocalfolder}bgp.conf"
                     myobj = f"{mys3vpnfolder}bgp.conf"
                     if bucketname != '':
                         fileupload(mycfgfile, bucketname, myobj)
+                        urlbgpd = create_presigned_url(bucketname, myobj)
+                # configuration to install strongswan and upload on secret manager
+                installlstswan = []
+                installlstswan.append("amazon-linux-extras install -y epel")
+                installlstswan.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                if type(localcidr) == list:
+                    for each in localcidr:
+                        installlstswan.append(f"route add -net {each} gw $GATEWAY")
+                    installlstswan.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                else:
+                    installlstswan.append(f"route add -net {localcidr} gw $GATEWAY")
+                    installlstswan.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                installlstswan.append("yum install -y strongswan")
+                installlstswan.append(f"curl \'{urlipsecconf}\' -o /etc/strongswan/ipsec.conf")
+                installlstswan.append(f"curl \'{urlsecrets}\' -o /etc/strongswan/ipsec.secrets")
+                installlstswan.append(f"curl \'{urlcommon}\' -o /etc/strongswan/ipsec.d/aws-updown.sh")
+                installlstswan.append("chmod +x /etc/strongswan/ipsec.d/aws-updown.sh")
+                installlstswan.append("systemctl enable strongswan")
+                if routetype == 'bgp':
+                    installlstswan.append("yum install -y quagga")
+                    installlstswan.append(f"curl \'{urlbgpd}\' -o  /etc/quagga/bgpd.conf")
+                    installlstswan.append("chown quagga:quaggavt /etc/quagga/bgpd.conf")
+                    installlstswan.append("systemctl enable zebra")
+                    installlstswan.append("systemctl enable bgpd")
+                installlstswan.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                installlstswan.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                installlstswan.append("systemctl restart sshd.service")
+                installlstswan.append("yum update -y")
+                installlstswan.append("reboot")
+                secretdata = '\n'.join(installlstswan)
+                #secretdata = base64.b64encode(lines.encode("ascii")).decode("ascii")
+                if eventtype == 'Create':
+                    logger.info('Debug: I enter here-Create')
+                    keylist = {}
+                    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['Description'] = f"StrongSwan User-Data User-Data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = createsecret(keylist, region)
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                elif eventtype == 'Update':
+                    logger.info('Debug: I enter here-Update')
+                    keylist = {}
+                    keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = putsecret(keylist, region)
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                else:
+                    logger.info('Secrets: Nothing to do! : {}'.format(eventtype))
+                response["Data"]["USRDATA"] = secretsput['ARN']
+            # bash file to install libreswan
+            if ec2type == 'libreswan':
+                if bucketname != '':
+                    installlstlibre = []
+                    installlstlibre.append("amazon-linux-extras install -y epel")
+                    installlstlibre.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                    if type(localcidr) == list:
+                        for each in localcidr:
+                            installlstlibre.append(f"route add -net {each} gw $GATEWAY")
+                        installlstlibre.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    else:
+                        installlstlibre.append(f"route add -net {localcidr} gw $GATEWAY")
+                        installlstlibre.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                    installlstlibre.append("yum install -y libreswan")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}{vpnid}.conf /etc/ipsec.d/{vpnid}.conf")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}ipsec.secrets /etc/ipsec.d/ipsec.secrets")
+                    installlstlibre.append(f"aws s3 cp s3://{bucketname}/vpn/common/aws-updown.sh /etc/ipsec.d/aws-updown.sh")
+                    installlstlibre.append("chmod +x /etc/ipsec.d/aws-updown.sh")
+                    installlstlibre.append("systemctl enable ipsec.service")
+                    if routetype == 'bgp':
+                        installlstlibre.append("yum install -y quagga")
+                        installlstlibre.append(f"aws s3 cp s3://{bucketname}/{mys3vpnfolder}bgpd.conf /etc/quagga/bgpd.conf")
+                        installlstlibre.append("chown quagga:quaggavt /etc/quagga/bgpd.conf")
+                        installlstlibre.append("systemctl enable zebra")
+                        installlstlibre.append("systemctl enable bgpd")
+                    installlstlibre.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                    installlstlibre.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                    installlstlibre.append("systemctl restart sshd.service")
+                    installlstlibre.append("yum update -y")
+                    installlstlibre.append("reboot")
+                    output = '\n'.join(installlstlibre)
+                    mycfgfile = f"{mylocalfolder}install_libreswan.sh"
+                    outputfile = open(mycfgfile, 'w')
+                    outputfile.write(output)
+                    outputfile.close()
+                    logger.info('Writing cfg file Success: {}'.format(mycfgfile))
+                    # upload install_libreswan.sh
+                    mycfgfile = f"{mylocalfolder}install_libreswan.sh"
+                    fileupload(mycfgfile, bucketname, myobj)
+                # vpnid.conf
+                mycfgfile = f"{mylocalfolder}{vpnid}.conf"
+                myobj = f"{mys3vpnfolder}{vpnid}.conf"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+                    urlipsecconf = create_presigned_url(bucketname, myobj)
+                # ipsec.secrets
+                mycfgfile = f"{mylocalfolder}ipsec.secrets"
+                myobj = f"{mys3vpnfolder}ipsec.secrets"
+                if bucketname != '':
+                    fileupload(mycfgfile, bucketname, myobj)
+                    urlsecrets = create_presigned_url(bucketname, myobj)
+                myobj = "vpn/common/aws-updown.sh"
+                urlcommon = create_presigned_url(bucketname, myobj)
+                if routetype == 'bgp':
+                    # bgp.conf
+                    mycfgfile = f"{mylocalfolder}bgp.conf"
+                    myobj = f"{mys3vpnfolder}bgp.conf"
+                    if bucketname != '':
+                        fileupload(mycfgfile, bucketname, myobj)
+                        urlbgpd = create_presigned_url(bucketname, myobj)
+                # configuration to install strongswan and upload on secret manager
+                installlstlibre = []
+                installlstlibre.append("amazon-linux-extras install -y epel")
+                installlstlibre.append("yum install -y libreswan")
+                installlstlibre.append("export GATEWAY=$(/sbin/ip route | awk '/default/ { print $3 }')")
+                if type(localcidr) == list:
+                    for each in localcidr:
+                        installlstlibre.append(f"route add -net {each} gw $GATEWAY")
+                    installlstlibre.append(f"echo {each} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                else:
+                    installlstlibre.append(f"route add -net {localcidr} gw $GATEWAY")
+                    installlstlibre.append(f"echo {localcidr} via $GATEWAY >>/etc/sysconfig/network-scripts/route-eth0")
+                installlstlibre.append(f"curl \'{urlipsecconf}\' -o /etc/ipsec.d/{vpnid}.conf")
+                installlstlibre.append(f"curl \'{urlsecrets}\' -o /etc/ipsec.d/ipsec.secrets")
+                installlstlibre.append(f"curl \'{urlcommon}\' -o /etc/ipsec.d/aws-updown.sh")
+                installlstlibre.append("systemctl enable ipsec.service")
+                if routetype == 'bgp':
+                    installlstlibre.append("yum install -y quagga")
+                    installlstlibre.append(f"curl \'{urlbgpd}\' -o /etc/quagga/bgpd.conf")
+                    installlstlibre.append("systemctl enable zebra")
+                    installlstlibre.append("systemctl enable bgpd")
+                installlstlibre.append("echo 'ClientAliveInterval 60' | tee --append /etc/ssh/sshd_config")
+                installlstlibre.append("echo 'ClientAliveCountMax 2' | tee --append /etc/ssh/sshd_config")
+                installlstlibre.append("systemctl restart sshd.service")
+                installlstlibre.append("yum update -y")
+                installlstlibre.append("reboot")
+                secretdata = '\n'.join(installlstlibre)
+                #secretdata = base64.b64encode(lines.encode("ascii")).decode("ascii")
+                if eventtype == 'Create':
+                    keylist = {}
+                    keylist['Name'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['Description'] = f"LibreSwan User-Data User-Data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = createsecret(keylist, region)
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                elif eventtype == 'Update':
+                    keylist = {}
+                    keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
+                    keylist['SecretString'] = secretdata
+                    secretsput = putsecret(keylist, region)
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                else:
+                    logger.info('Secrets: Nothing to do! : {}'.format(eventtype))
+                response["Data"]["USRDATA"] = secretsput['ARN']
             # cisco_asr.conf
             if ec2type == 'CSR':            
                 mycfgfile = f"{mylocalfolder}cisco_asr.conf"
@@ -870,16 +978,18 @@ def lambda_handler(event, context):
                     keylist['Description'] = f"Cisco CSR VGW Endpoint User-Data"
                     keylist['SecretString'] = secretdata
                     secretsput = createsecret(keylist, region)
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
                 elif eventtype == 'Update':
                     keylist = {}
                     keylist['SecretId'] = f"/vpn/{vpnregion}/{vpnid}/usr-data"
                     keylist['SecretString'] = secretdata
                     secretsput = putsecret(keylist, region)
-                if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
-                    logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
+                    if secretsput['ResponseMetadata']['HTTPStatusCode'] != 200:
+                        logger.info('Secrets: Put Secret Error: {}'.format(secretsput))
                 else:
                     logger.info('Secrets: Put Secret Success! : {}'.format(secretsput))
-                    response["Data"]["USRDATA"] = secretsput['ARN']
+                response["Data"]["USRDATA"] = secretsput['ARN']
             # generate response
             phyresId = vpnid
             response["Status"] = "SUCCESS"

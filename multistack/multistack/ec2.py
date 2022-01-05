@@ -1,6 +1,7 @@
 import os
 import json
 from typing import Annotated
+from collections import Counter
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_iam as iam,
@@ -216,6 +217,7 @@ class InstanceStack(core.Stack):
                     filters=imagefilter
                 )
                 image = 'Appliance'
+                usrdata = None
             else:
                 machineimage = ec2.AmazonLinuxImage(
                     edition=ec2.AmazonLinuxEdition.STANDARD,
@@ -274,7 +276,7 @@ class InstanceStack(core.Stack):
             instance_name=resname,
             security_group=self.ec2sg,
             source_dest_check=ressrcdstchk,
-            user_data=None,
+            user_data=usrdata,
             user_data_causes_replacement=resusrdtrepl,
             vpc_subnets=ec2.SubnetSelection(
                 subnet_group_name=ressubgrp,
@@ -312,20 +314,12 @@ class InstanceStack(core.Stack):
                     f"rm customscript.zip\n"
                 )
             self.instance.instance.add_property_override("UserData", usrdata)
-        elif type(userdata) == dict and image == 'Appliance':
+        elif type(userdata) == dict:
             if 'Secrets' in userdata:
                 data = userdata['Secrets']
-                self.secretdata = secretsmanager.Secret.from_secret_complete_arn(
-                    self,
-                    "USRDATA",
-                    secret_complete_arn=data
-                ).secret_value
-                usrdata = ec2.UserData.custom(self.secretdata.to_string())
-                self.instance.instance.add_property_override("UserData", usrdata)
-        if type(userdata) == dict and image == 'Appliance':
-            self.instance.instance.add_property_deletion_override("UserData")
-            usrdata = self.secretdata.to_string()
-            self.instance.instance.add_property_override("UserData", usrdata)
+                secret = secretsmanager.Secret.from_secret_complete_arn(self, f"{construct_id}Usrdata", secret_complete_arn=data)
+                secret.grant_read(self.instance.role)
+                self.instance.add_user_data(f"aws --region {region} secretsmanager  get-secret-value --secret-id {data} --query SecretString  --output text | bash\n")
         # add tags
         if 'TAGS' in resmap['Mappings']['Resources'][res]:
             for tagsmap in resmap['Mappings']['Resources'][res]['TAGS']:
@@ -533,6 +527,32 @@ class InstanceStack(core.Stack):
         #         }
         #     }
         # )
+        if 'INSTRT' in resmap['Mappings']['Resources'][res]:
+            if 'INSTRTTYPE' in resmap['Mappings']['Resources'][res]:
+                subtype = resmap['Mappings']['Resources'][res]['INSTRTTYPE']
+            else:
+                subtype = ["Private"]
+            for sub in subtype:
+                selection = self.vpc.select_subnets(subnet_group_name=sub)
+                rtselection = []
+                for subnet in selection.subnets:
+                    rtselection.append(subnet.route_table.route_table_id)
+                    rtlist = Counter(rtselection)
+                    rtidlist = [rtid for rtid in rtlist if rtlist[rtid] == 1]
+                    index = 0
+                    for rtid in rtidlist:
+                        idx = 0
+                        for rt in resmap['Mappings']['Resources'][res]['INSTRT']:
+                            ec2.CfnRoute(
+                                self,
+                                f"RTToInt{sub}-{index}-{idx}",
+                                route_table_id=rtid,
+                                instance_id=self.instance.instance_id,
+                                destination_cidr_block=rt
+                            )
+                            idx = idx + 1
+                        index = index + 1
+
         # some outputs
         core.CfnOutput(
             self,
