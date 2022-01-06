@@ -49,7 +49,7 @@ BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepriv', p
 BationStack.add_dependency(target=VPCStack)
 GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw2', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = BationStack.bastionsg, tgwstack = '', cross = False)
 GatewayStack.add_dependency(target=BationStack)
-VPCStack2 = VPC(app, "DefaultVPC", env=myenv, res = '', cidrid = 0, natgw = 0, maxaz = 3, ipstack = ipstack)
+VPCStack2 = VPC(app, "VPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 3, maxaz = 3, ipstack = ipstack)
 VPCStack2.add_dependency(target=GatewayStack)
 EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 EIPStack.add_dependency(target=VPCStack2)
@@ -59,8 +59,9 @@ S3VPNStack = vpns3(app, "S2SVPNS3", env=myenv2, route = route, vpnid = '', remot
 S3VPNStack.add_dependency(S2SVPNStack)
 VPNSRVStack = instance(app, "My-VPNSRV", env=myenv2, res = 'vpnsrvstrswbgp', preflst = True, allowsg = '', instpol = '', userdata = { "Secrets" : S3VPNStack.mycustomresource.get_att_string('USRDATA')}, eipall = S3VPNStack.mycustomresource.get_att_string('EIPAllocid'), allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
 VPNSRVStack.add_dependency(S3VPNStack)
-InstanceStack = instance(app, "My-windows", env=myenv, res = 'winbast', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
-InstanceStack.add_dependency(target=VPNSRVStack)
+ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxbe', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
+ASGStack.add_dependency(target=VPNSRVStack)
+ELBStack = alb(app, "MY-ELB", env=myenv, res = 'nlbbe', preflst = False, allowsg = '', allowall = 80, ipstack = ipstack, tgrt = '', tgrtip = ["10.17.13.241", "10.17.13.183", "10.17.10.228", "10.17.10.3", "10.17.5.10", "10.17.7.31"], vpc = VPCStack.vpc)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)

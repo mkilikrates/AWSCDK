@@ -532,26 +532,27 @@ class InstanceStack(core.Stack):
                 subtype = resmap['Mappings']['Resources'][res]['INSTRTTYPE']
             else:
                 subtype = ["Private"]
+            rtselection = []
             for sub in subtype:
                 selection = self.vpc.select_subnets(subnet_group_name=sub)
-                rtselection = []
                 for subnet in selection.subnets:
-                    rtselection.append(subnet.route_table.route_table_id)
-                    rtlist = Counter(rtselection)
-                    rtidlist = [rtid for rtid in rtlist if rtlist[rtid] == 1]
-                    index = 0
-                    for rtid in rtidlist:
-                        idx = 0
-                        for rt in resmap['Mappings']['Resources'][res]['INSTRT']:
-                            ec2.CfnRoute(
-                                self,
-                                f"RTToInt{sub}-{index}-{idx}",
-                                route_table_id=rtid,
-                                instance_id=self.instance.instance_id,
-                                destination_cidr_block=rt
-                            )
-                            idx = idx + 1
-                        index = index + 1
+                    if subnet.route_table.route_table_id not in rtselection:
+                        rtselection.append(subnet.route_table.route_table_id)
+            rtlist = Counter(rtselection)
+            rtidlist = [rtid for rtid in rtlist if rtlist[rtid] == 1]
+            index = 0
+            for rtid in rtidlist:
+                idx = 0
+                for rt in resmap['Mappings']['Resources'][res]['INSTRT']:
+                    ec2.CfnRoute(
+                        self,
+                        f"RTToInt{sub}-{index}-{idx}",
+                        route_table_id=rtid,
+                        instance_id=self.instance.instance_id,
+                        destination_cidr_block=rt
+                    )
+                    idx = idx + 1
+                index = index + 1
 
         # some outputs
         core.CfnOutput(
