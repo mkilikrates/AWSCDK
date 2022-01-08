@@ -266,8 +266,8 @@ class VPC(core.Stack):
                 self.v6 = core.CfnOutput(
                     self,
                     f"{self.stack_name}:Ipv6Cidr",
-                    # value=core.Fn.select(0,self.vpc.vpc_ipv6_cidr_blocks),
-                    value= core.Token.as_string(self.vpc.vpc_ipv6_cidr_blocks),
+                    value=core.Fn.select(0,self.vpc.vpc_ipv6_cidr_blocks),
+                    # value= core.Token.as_string(self.vpc.vpc_ipv6_cidr_blocks),
                     export_name=f"{self.stack_name}:Ipv6Cidr"
                 )
         self.v4 = core.CfnOutput(

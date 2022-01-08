@@ -246,6 +246,7 @@ class InstanceStack(core.Stack):
                 "rm awscliv2.zip",
                 "./aws/install -i /usr/local/aws-cli -b /usr/bin"
             )
+
         if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
             self.key.grant_read_on_private_key(self.instance.role)
             if image == 'Linux':
@@ -260,6 +261,19 @@ class InstanceStack(core.Stack):
                 usrdata.add_commands(
                     "mkdir $home\\.ssh\n",
                     "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
+                )
+
+        if 'CWAgent' in resmap['Mappings']['Resources'][res]:
+            rescwagent = resmap['Mappings']['Resources'][res]['CWAgent']
+            cwagentcfg = open(rescwagent, "r").read()
+            if image == 'Linux':
+                usrdata.add_commands(
+                    "yum install -y amazon-cloudwatch-agent",
+                    "cat << EOF > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json",
+                    f"{cwagentcfg}",
+                    "EOF",
+                    "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop",
+                    "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s"
                 )
        
         # create instance
@@ -289,8 +303,9 @@ class InstanceStack(core.Stack):
         if type(userdata) == str and image == 'Linux' or image == 'Windows':
             usrdatafile = userdata
             userdata = open(usrdatafile, "r").read()
-            usrdata.add_commands(userdata)
-            self.instance.instance.add_property_override("UserData", usrdata)
+            #usrdata.add_commands(userdata)
+            #self.instance.instance.add_property_override("UserData", usrdata)
+            self.instance.add_user_data(userdata)
         elif type(userdata) == list and image == 'Linux':
             usrdatalst = []
             with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
@@ -402,7 +417,10 @@ class InstanceStack(core.Stack):
         #                     parameter_name=data
         #                 ).string_value
         #             self.instance.add_user_data(userdata)
-        # create instance profile
+        # add instance permissions for cloudwatchagent
+        if 'CWAgent' in resmap['Mappings']['Resources'][res]:
+            pol = iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchAgentServerPolicy')
+            self.instance.role.add_managed_policy(pol)
         # add SSM permissions to update instance
         pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
         self.instance.role.add_managed_policy(pol)

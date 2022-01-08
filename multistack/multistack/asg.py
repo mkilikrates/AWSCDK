@@ -155,7 +155,7 @@ class main(core.Stack):
             )
             if self.ipstack == 'Ipv6':
                 self.asgsg.add_ingress_rule(
-                    ec2.Peer.any_ipv6,
+                    ec2.Peer.any_ipv6(),
                     ec2.Port.all_traffic()
                 )
         if type(allowall) == int or type(allowall) == float:
@@ -165,7 +165,7 @@ class main(core.Stack):
             )
             if self.ipstack == 'Ipv6':
                 self.asgsg.add_ingress_rule(
-                    ec2.Peer.any_ipv6(),
+                    ec2.Peer.any_ipv6()(),
                     ec2.Port.tcp(allowall)
                 )
         # create instance profile for SSM patching

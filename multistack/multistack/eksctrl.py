@@ -665,4 +665,3 @@ class ekscwinsights(core.Stack):
         outputfile = open(outputyaml, 'w')
         outputfile.write(yamlmanifest)
         outputfile.close()
-

@@ -40,29 +40,12 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"]))
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 route = 'bgp'
-gwtype = 'tgw'
-ipstack = 'Ipv4'
+gwtype = 'vgw'
+ipstack = 'Ipv6'
 app = core.App()
 # env 1
 VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepriv', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
-BationStack.add_dependency(target=VPCStack)
-GatewayStack = mygw(app, "MY-GATEWAY", env=myenv, gwtype = gwtype, gwid = '', res = 'tgw2', route = route, ipstack = ipstack, vpc = VPCStack.vpc, vpcname = 'vpc', bastionsg = BationStack.bastionsg, tgwstack = '', cross = False)
-GatewayStack.add_dependency(target=BationStack)
-VPCStack2 = VPC(app, "VPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 3, maxaz = 3, ipstack = ipstack)
-VPCStack2.add_dependency(target=GatewayStack)
-EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
-EIPStack.add_dependency(target=VPCStack2)
-S2SVPNStack = s2svpn(app, "MY-VPN", env=myenv, gwtype = gwtype, route = route, res = '', funct = '', ipfamily = 'ipv4', gwid = GatewayStack.gw, cgwaddr = EIPStack.mycustomresource, tgwrt = '', tgwprop = '', tgwrtfunct = '', staticrt = '', remoteregion = remoteregion)
-S2SVPNStack.add_dependency(GatewayStack)
-S3VPNStack = vpns3(app, "S2SVPNS3", env=myenv2, route = route, vpnid = '', remoteregion = region, funct ='', res = 'vpnsrvstrswbgp', vpc = VPCStack2.vpc, vpnstackname = 'MY-VPN')
-S3VPNStack.add_dependency(S2SVPNStack)
-VPNSRVStack = instance(app, "My-VPNSRV", env=myenv2, res = 'vpnsrvstrswbgp', preflst = True, allowsg = '', instpol = '', userdata = { "Secrets" : S3VPNStack.mycustomresource.get_att_string('USRDATA')}, eipall = S3VPNStack.mycustomresource.get_att_string('EIPAllocid'), allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
-VPNSRVStack.add_dependency(S3VPNStack)
-ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxbe', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
-ASGStack.add_dependency(target=VPNSRVStack)
-ELBStack = alb(app, "MY-ELB", env=myenv, res = 'nlbbe', preflst = False, allowsg = '', allowall = 80, ipstack = ipstack, tgrt = '', tgrtip = ["10.17.13.241", "10.17.13.183", "10.17.10.228", "10.17.10.3", "10.17.5.10", "10.17.7.31"], vpc = VPCStack.vpc)
-
+InstanceStack2 = instance(app, "MY-Bastion", env=myenv, res = 'simpletshoot', preflst = False, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
@@ -76,7 +59,7 @@ ELBStack = alb(app, "MY-ELB", env=myenv, res = 'nlbbe', preflst = False, allowsg
 #BationStack.add_dependency(target=GatewayStack)
 #SDStack = sd(app, "My-SD", env=myenv, res = 'ecsbe', ipstack = ipstack, elb = '', vpc = VPCStack.vpc)
 #ECStack = ecs(app, "myecs", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = SDStack.servicename, vpc = VPCStack.vpc)
-#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'albbe80', preflst = False, allowsg = '', allowall = 80, ipstack = ipstack, tgrt = ECStack.srvc, vpc = VPCStack.vpc)
+#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'albbe80', preflst = False, tgrtip = '', allowsg = '', allowall = 80, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
 #ADStack.add_dependency(target=VPCStack)
 #R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
