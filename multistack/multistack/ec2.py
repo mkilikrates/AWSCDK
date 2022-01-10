@@ -260,21 +260,55 @@ class InstanceStack(core.Stack):
             if image == 'Windows':
                 usrdata.add_commands(
                     "mkdir $home\\.ssh\n",
-                    "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
+                    "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)\n"
                 )
 
         if 'CWAgent' in resmap['Mappings']['Resources'][res]:
             rescwagent = resmap['Mappings']['Resources'][res]['CWAgent']
-            cwagentcfg = open(rescwagent, "r").read()
-            if image == 'Linux':
-                usrdata.add_commands(
-                    "yum install -y amazon-cloudwatch-agent",
-                    "cat << EOF > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json",
-                    f"{cwagentcfg}",
-                    "EOF",
-                    "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop",
-                    "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s"
-                )
+            if os.path.isfile(rescwagent):
+                cwagentcfgfile = open(rescwagent, "r").read()
+                if image == 'Linux':
+                    ssm.StringParameter(
+                        self,
+                        "SSMCFGLinux",
+                        type=ssm.ParameterType("STRING"),
+                        parameter_name=f"{self.stack_name}-CWAgentCFG",
+                        description="Clodwatch Agent Configuration for Linux",
+                        string_value=cwagentcfgfile,
+                        tier=ssm.ParameterTier.STANDARD
+                    )
+                    usrdata.add_commands(
+                        "yum install -y amazon-cloudwatch-agent",
+                        # f"aws s3 cp s3://{cwagentcfg.s3_bucket_name}/{cwagentcfg.s3_object_key} /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json",
+                        # "cat << EOF > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json",
+                        # f"{cwagentcfg}",
+                        # "EOF",
+                        "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop",
+                        f"/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:{self.stack_name}-CWAgentCFG"
+                    )
+                if image == 'Windows':
+                    ssm.StringParameter(
+                        self,
+                        "SSMCFGWindows",
+                        type=ssm.ParameterType("STRING"),
+                        parameter_name=f"{self.stack_name}-CWAgentCFG",
+                        description="Clodwatch Agent Configuration for Windows",
+                        string_value=cwagentcfgfile,
+                        tier=ssm.ParameterTier.STANDARD
+                    )
+                    usrdata.add_commands(
+                        "$Path = $env:TEMP;",
+                        "$Installer = \"msiexec.exe\";",
+                        "$Package = \"amazon-cloudwatch-agent.msi\";",
+                        "$arguments = \"/I $Path\$Package /qn\";",
+                        f"Invoke-WebRequest \"https://s3.{region}.amazonaws.com/amazoncloudwatch-agent-{region}/windows/amd64/latest/amazon-cloudwatch-agent.msi\" -OutFile $Path\$Package;",
+                        "Start-Process $Installer -Wait -ArgumentList $arguments;",
+                        "Remove-Item $Path\$Package;",
+                        f"$cmd = \'& $env:ProgramFiles\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1 -a fetch-config -m ec2 -s -c ssm:{self.stack_name}-CWAgentCFG\';",
+                        "$Process2Monitor = \"msiexec\";",
+                        "Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name;",
+                        "If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)\n",
+                    )
        
         # create instance
         self.instance = ec2.Instance(
@@ -419,6 +453,16 @@ class InstanceStack(core.Stack):
         #             self.instance.add_user_data(userdata)
         # add instance permissions for cloudwatchagent
         if 'CWAgent' in resmap['Mappings']['Resources'][res]:
+            self.cwagentpolicy = iam.PolicyStatement(
+                actions=[
+                    "ssm:GetParameter"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:{core.Aws.PARTITION}:ssm:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:parameter/cwagent/{region}/{self.stack_name}"
+                ]
+            )
+            self.instance.role.add_to_policy(self.cwagentpolicy)
             pol = iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchAgentServerPolicy')
             self.instance.role.add_managed_policy(pol)
         # add SSM permissions to update instance
