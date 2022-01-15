@@ -63,7 +63,7 @@ class VPCEStack(core.Stack):
                 )
                 if mypol != '':
                     for police in mypol:
-                        mys3gw.add_to_policy(police)
+                        mys3gw.add_to_principal_policy(statement=police)
             if restype == 'Interface':
                 # create security group for Interface VPC Endpoints
                 if counter == 0:
@@ -260,5 +260,5 @@ class VPCEStack(core.Stack):
                         service=vpcesrv,
                         subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
                         security_groups=[self.vpcesg]
-                    ).add_to_policy(iam.PolicyStatement(**mypol))
+                    ).add_to_principal_policy(statement=iam.PolicyStatement(**mypol))
                 counter = counter + 1

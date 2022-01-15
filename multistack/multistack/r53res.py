@@ -182,7 +182,7 @@ class rslv(core.Stack):
                         description="Role for Delivery Resolver Query Logs",
                     )
                     # Attach policy to Iam Role
-                    self.r53rslvlogrole.add_to_policy(self.r53rslvlogpolicy)
+                    self.r53rslvlogrole.add_to_principal_policy(statement=self.r53rslvlogpolicy)
                     # query log config
                     self.r53rslvlog = route53resolver.CfnResolverQueryLoggingConfig(
                         self,

@@ -55,4 +55,14 @@ command.
  * `cdk diff`        compare deployed stack with current state
  * `cdk docs`        open CDK documentation
 
+## Scripts to be use with different accounts or regions
+
+ * `./cdk-to.sh <ACCOUNT_NUMBER> <region> command options`                       use same commands above but using a given account number and region
+ * `./cdk-to.sh 123457689 us-east-1 list`                                        list all stacks in the app
+ * `./cdk-to.sh 123457689 us-east-1 diff`                                        compare deployed stack with current state
+ * `./cdk-to.sh 123457689 us-east-1 deploy --all --require-approval never`       deploy this stack
+ * `./cdk-to.sh 123457689 us-east-1 destroy <stackname> --ignore-errors --force` destroy this stack
+
+Use `<stackname>` or `--all` when using `deploy` or `destroy`
+
 Enjoy!

@@ -251,7 +251,7 @@ class s2svpn(core.Stack):
                             'Role for Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation'
                         )
                     )
-                    self.tgwvpnattachlambdarole.add_to_policy(self.tgwvpnattachlambdapolicy)
+                    self.tgwvpnattachlambdarole.add_to_principal_policy(statement=self.tgwvpnattachlambdapolicy)
                     # Create Lambda Function
                     self.tgwvpnattachlambda = lpython.PythonFunction(
                         self,
@@ -467,8 +467,8 @@ class s2svpn(core.Stack):
                         'Role for Lambda to create or modify vpn as Custom Resources in CloudFormation'
                     )
                 )
-                self.mylambdarole.add_to_policy(self.mylambdapolicy)
-                self.mylambdarole.add_to_policy(self.mylambdaEC2VPNpolicy)
+                self.mylambdarole.add_to_principal_policy(statement=self.mylambdapolicy)
+                self.mylambdarole.add_to_principal_policy(statement=self.mylambdaEC2VPNpolicy)
                 # Create Lambda Function
                 self.mylambda = lpython.PythonFunction(
                     self,
@@ -566,7 +566,7 @@ class s2svpn(core.Stack):
                             'Role for Lambda to describe tgw attachment for vpn as Custom Resources in CloudFormation'
                         )
                     )
-                    self.tgwvpnattachlambdarole.add_to_policy(self.tgwvpnattachlambdapolicy)
+                    self.tgwvpnattachlambdarole.add_to_principal_policy(statement=self.tgwvpnattachlambdapolicy)
                     # Create Lambda Function
                     self.tgwvpnattachlambda = lpython.PythonFunction(
                         self,

@@ -356,13 +356,14 @@ class InstanceStack(core.Stack):
                     path=f"cdk.out/{construct_id}customscript.zip"
                 )
                 customscript.grant_read(self.instance.role)
-                usrdata.add_commands(
+                self.instance.add_user_data(
                     "yum install -y unzip",
                     f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
                     f"unzip customscript.zip",
                     f"rm customscript.zip\n"
                 )
-            self.instance.instance.add_property_override("UserData", usrdata)
+                usrdata = ''.join(usrdatalst)
+                self.instance.add_user_data(usrdata)
         elif type(userdata) == dict:
             if 'Secrets' in userdata:
                 data = userdata['Secrets']
@@ -462,7 +463,8 @@ class InstanceStack(core.Stack):
                     f"arn:{core.Aws.PARTITION}:ssm:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:parameter/cwagent/{region}/{self.stack_name}"
                 ]
             )
-            self.instance.role.add_to_policy(self.cwagentpolicy)
+            #self.instance.role.add_to_policy(self.cwagentpolicy)
+            self.instance.role.add_to_principal_policy(statement=self.cwagentpolicy)
             pol = iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchAgentServerPolicy')
             self.instance.role.add_managed_policy(pol)
         # add SSM permissions to update instance

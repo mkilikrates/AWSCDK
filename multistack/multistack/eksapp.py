@@ -396,7 +396,10 @@ class AppStack(core.Stack):
                         if 'SID' in police:
                             newpol["sid"] = police['SID']
                         #mypol.append(iam.PolicyStatement(**newpol))
-                        self.svcacc.add_to_policy(iam.PolicyStatement(**newpol))
+                        #self.svcacc.add_to_policy(iam.PolicyStatement(**newpol))
+                        for statement in newpol['Statement']:
+                            self.svcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
+
                 if 'POLICEFILE' in resapp:
                     polfile = resapp['POLICEFILE']
                     with open(polfile) as resfile:
@@ -426,7 +429,9 @@ class AppStack(core.Stack):
                         if 'SID' in police:
                             newpol["sid"] = police['SID']
                         mypol.append(iam.PolicyStatement(**newpol))
-                    self.svcacc.add_to_policy(mypol)
+                    #self.svcacc.add_to_policy(mypol)
+                    for statement in mypol['Statement']:
+                        self.svcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
             mnfstlst = []
             if 'MANIFEST' in resapp:
                 for mnfst in resapp['MANIFEST']:

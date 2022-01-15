@@ -342,7 +342,7 @@ class internetfw(core.Stack):
                 'Role for Lambda to Get VPC Route table as Custom Resources in CloudFormation'
             )
         )
-        self.mylambdarole.add_to_policy(self.mylambdapolicy)
+        self.mylambdarole.add_to_principal_policy(statement=self.mylambdapolicy)
         # Create Lambda Function
         self.mylambda = lpython.PythonFunction(
             self,

@@ -17,7 +17,7 @@ account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 yamloutdir = './cdk.out/'
 
-class eksELBHelm(core.Stack): # based on https://github.com/aws-samples/nexus-oss-on-aws/blob/d3a092d72041b65ca1c09d174818b513594d3e11/src/lib/sonatype-nexus3-stack.ts#L207-L242
+class ELBCont(core.Stack): # based on https://github.com/aws-samples/nexus-oss-on-aws/blob/d3a092d72041b65ca1c09d174818b513594d3e11/src/lib/sonatype-nexus3-stack.ts#L207-L242
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
@@ -75,101 +75,53 @@ class eksDNSHelm(core.Stack):
             name="external-dns",
             namespace=('kube-system')
         )
+        # Policy
+        mynewpol = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "route53:ChangeResourceRecordSets"
+                    ],
+                    "Resource": [
+                        "arn:aws:route53:::hostedzone/*"
+                      ]
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "route53:ListHostedZones",
+                        "route53:ListResourceRecordSets"
+                    ],
+                    "Resource": [
+                        "*"
+                    ]
+                }
+            ]
+        }
+        for statement in mynewpol['Statement']:
+            self.dnsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
         # external dns controller
-        self.manifest = MyChart.extdns(
-            cdk8s.App(),
-            "Manifest-external-dns",
-            svcaccount = self.dnsvcacc,
-        )
-        # apply chart
-        self.chart = self.eksclust.add_cdk8s_chart(
-            "Chart-external-dns",
-            chart=self.manifest
-        ).node.add_dependency(self.dnsvcacc)
-
-
-class eksELB(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
-        # get imported objects
-        self.eksclust = ekscluster
-        # service account for load balancer
-        self.albsvcacc = self.eksclust.add_service_account(
-            "aws-load-balancer-controller",
-            name="aws-load-balancer-controller",
-            namespace=('default')
-        )
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
-        # mypol = requests.get(url)
-        # mypolstat = json.dumps(mypol.json())
-        # mynewpol = json.loads(mypolstat)
-        # for statement in mynewpol['Statement']:
-        #     self.albsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        # load balancer controller
-        self.manifest = MyChart.Albctrl(
-            cdk8s.App(),
-            "Manifest-aws-load-balancer-controller",
-            clustername = self.eksclust.cluster_name,
-            svcaccount = self.albsvcacc,
-        )
-        # apply chart
-        self.chart = self.eksclust.add_cdk8s_chart(
-            "Chart-aws-load-balancer-controller",
-            chart=self.manifest
-        ).node.add_dependency(self.albsvcacc)
-        # # in case of failure, remove using the following cli
-        # kubectl delete customresourcedefinition.apiextensions.k8s.io/targetgroupbindings.elbv2.k8s.aws
-        # kubectl delete secret/aws-load-balancer-tls
-        # kubectl delete clusterrole.rbac.authorization.k8s.io/aws-load-balancer-controller-role
-        # kubectl delete role.rbac.authorization.k8s.io/aws-load-balancer-controller-leader-election-role
-        # kubectl delete rolebinding.rbac.authorization.k8s.io/aws-load-balancer-controller-leader-election-rolebinding
-        # kubectl delete service/aws-load-balancer-webhook-service
-        # kubectl delete deployment.apps/aws-load-balancer-controller
-        # kubectl delete mutatingwebhookconfiguration.admissionregistration.k8s.io/aws-load-balancer-webhook
-        # kubectl delete validatingwebhookconfiguration.admissionregistration.k8s.io/aws-load-balancer-webhook
-        # kubectl delete clusterrolebindings.rbac.authorization.k8s.io/aws-load-balancer-controller-rolebinding
-
-class eksING(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
-        # get imported objects
-        self.eksclust = ekscluster
-        # service account for load balancer
-        self.ingsvcacc = self.eksclust.add_service_account(
-            "aws-load-balancer-controller",
-            name="aws-load-balancer-controller",
-            namespace=('default')
-        )
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
-        # mypol = requests.get(url)
-        # mypolstat = json.dumps(mypol.json())
-        # mynewpol = json.loads(mypolstat)
-        # for statement in mynewpol['Statement']:
-        #     self.ingsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        # load balancer controller
-        self.manifest = MyChart.Ingctrl(
-            cdk8s.App(),
-            "Manifest-aws-load-balancer-controller",
-            clustername = self.eksclust.cluster_name,
-            svcaccount = self.ingsvcacc,
-        )
-        self.manifest = MyChart.Albctrl(
-            cdk8s.App(),
-            "Manifest-aws-load-balancer-controller",
-            clustername = self.eksclust.cluster_name,
-            svcaccount = self.albsvcacc,
-        )
-
-
-
-        # apply chart
-        self.chart = eks.HelmChart(
+        chartparam = {}
+        chartparam['clusterName'] = self.eksclust.cluster_name
+        chartparam['serviceAccount'] = {}
+        chartparam['serviceAccount']['create'] = False
+        chartparam['serviceAccount']['name'] = "external-dns"
+        chartparam['aws'] = {}
+        chartparam['aws']['zoneType'] = ""
+        chartparam['provider'] = "aws"
+        self.manifest = eks.HelmChart(
             self,
-            "Chart-aws-load-balancer-controller",
+            "Manifest-external-dns",
             cluster=self.eksclust,
-            namespace='default',
-            chart=self.manifest
-        ).node.add_dependency(self.ingsvcacc)
+            chart="external-dns",
+            namespace="kube-system",
+            repository="https://charts.bitnami.com/bitnami",
+            values=chartparam,
+            wait=True,
+            create_namespace=False,
+        ).node.add_dependency(self.dnsvcacc)
 
 class eksDNS(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
@@ -226,18 +178,6 @@ class eksNGINXHLM(core.Stack):
                 domain_name=appdomain,
                 private_zone=True,
             )
-        # # service account for ingress-nginx
-        # self.ingnginxsvcacc = self.eksclust.add_service_account(
-        #     "ingress-nginx-controller",
-        #     name="ingress-nginx-controller",
-        #     namespace=('default')
-        # )
-        # url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.1.3/docs/install/iam_policy.json'
-        # mypol = requests.get(url)
-        # mypolstat = json.dumps(mypol.json())
-        # mynewpol = json.loads(mypolstat)
-        # for statement in mynewpol['Statement']:
-        #     self.ingsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
         # chart parameters
         chartparam = {}
         if "RBAC" in resmap['Mappings']['Resources'][res]:
@@ -376,54 +316,6 @@ class eksNGINXMNF(core.Stack):
         outputfile.write(yamlmanifest)
         outputfile.close()
         
-class eksINGMNF(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
-        # get imported objects
-        self.eksclust = ekscluster
-        # service account for load balancer
-        self.ingsvcacc = eks.ServiceAccount(
-            self,
-            "aws-load-balancer-controller-service-account",
-            name="aws-load-balancer-controller",
-            namespace=('default'),
-            cluster=self.eksclust
-        )
-        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/iam_policy.json'
-        mypol = requests.get(url)
-        mypolstat = json.dumps(mypol.json())
-        mynewpol = json.loads(mypolstat)
-        for statement in mynewpol['Statement']:
-            self.ingsvcacc.add_to_principal_policy(iam.PolicyStatement.from_json(statement))
-        # load balancer controller
-        url = 'https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.0/docs/install/v2_2_0_full.yaml'
-        mnftlst = yaml.load_all(requests.get(url).content, Loader=yaml.FullLoader)
-        manifest = []
-        for item in mnftlst:
-            if item['kind'] == 'Deployment':
-                if 'containers' in item['spec']['template']['spec']:
-                    for container in item['spec']['template']['spec']['containers']:
-                        if 'args' in container:
-                            for arg in container['args']:
-                                if arg == "--cluster-name=your-cluster-name":
-                                    arg = "--cluster-name={{ cluster-name }}"
-            manifest.append(item)
-        #manifest = yaml.dump_all(mnftlst)
-        self.Manifest = eks.KubernetesManifest(
-            self,
-            'aws-load-balancer-controller',
-            cluster=self.eksclust,
-            manifest=manifest,
-            overwrite=True,
-            skip_validation=True
-        )
-        #write manifest yaml file
-        yamlmanifest = yaml.dump_all(manifest)
-        outputyaml = f"{yamloutdir}{construct_id}.yaml"
-        outputfile = open(outputyaml, 'w')
-        outputfile.write(yamlmanifest)
-        outputfile.close()
-
 class eksinsights(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -444,6 +336,13 @@ class eksinsights(core.Stack):
             overwrite=True,
             skip_validation=True
         )
+        #write manifest yaml file
+        yamlmanifest = yaml.dump_all(manifest)
+        outputyaml = f"{yamloutdir}{construct_id}cwagent-cloudwatch-Namespace.yaml"
+        outputfile = open(outputyaml, 'w')
+        outputfile.write(yamlmanifest)
+        outputfile.close()
+
         # service account for container insights
         self.eksclust = ekscluster
         self.insightssvcacc = eks.ServiceAccount(
@@ -481,6 +380,12 @@ class eksinsights(core.Stack):
             skip_validation=True
             )
         self.Manifestcfmflt.node.add_dependency(self.Manifestns)
+        #write manifest yaml file
+        yamlmanifest = yaml.dump_all(manifest)
+        outputyaml = f"{yamloutdir}{construct_id}cwagent-fluent-bit-cluster-info.yaml"
+        outputfile = open(outputyaml, 'w')
+        outputfile.write(yamlmanifest)
+        outputfile.close()
         # install fluent-bit optimized configuration
         url = 'https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/fluent-bit/fluent-bit.yaml'
         mnftlst = yaml.load_all(requests.get(url).content, Loader=yaml.FullLoader)
@@ -497,56 +402,13 @@ class eksinsights(core.Stack):
             skip_validation=True
         )
         self.Manifestflt.node.add_dependency(self.Manifestcfmflt)
+        #write manifest yaml file
+        yamlmanifest = yaml.dump_all(manifest)
+        outputyaml = f"{yamloutdir}{construct_id}cwagent-fluent-bit.yaml"
+        outputfile = open(outputyaml, 'w')
+        outputfile.write(yamlmanifest)
+        outputfile.close()
 
-        # url = 'https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/quickstart/cwagent-fluent-bit-quickstart.yaml'
-        # lines=requests.get(url).text
-        # lines=lines.replace('{{cluster_name}}', self.eksclust.cluster_name)
-        # lines=lines.replace('{{region_name}}', region)
-        # lines=lines.replace('{{http_server_toggle}}', 'On')
-        # lines=lines.replace('{{http_server_port}}', '2020')
-        # lines=lines.replace('{{read_from_head}}', 'Off')
-        # lines=lines.replace('{{read_from_tail}}', 'On')
-        # mnftlst = yaml.load_all(lines, Loader=yaml.FullLoader)
-        # manifest = []
-        # count = 1
-        # for item in mnftlst:
-        #     manifest.append(item)
-        #     if item['kind'] == 'Namespace':
-        #         self.Manifestns = eks.KubernetesManifest(
-        #             self,
-        #             f"Manifest-Configmap-fluent-bit",
-        #             cluster=self.eksclust,
-        #             manifest=[item],
-        #             overwrite=True,
-        #             skip_validation=True
-        #         )
-        #         # service account for load balancer
-        #         self.insightssvcacc = eks.ServiceAccount(
-        #             self,
-        #             "cloudwatch-agent-service-account",
-        #             name="cloudwatch-agent",
-        #             namespace=('amazon-cloudwatch'),
-        #             cluster=self.eksclust,
-        #         )
-        #         self.insightssvcacc.role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchAgentServerPolicy'))
-        #         self.insightssvcacc.node.add_dependency(self.Manifestns)
-        #         count = count + 1
-        #     # else:
-        #     #     eks.KubernetesManifest(
-        #     #         self,
-        #     #         f"Manifest-cloudwatch-{itemkind}-{count}",
-        #     #         cluster=self.eksclust,
-        #     #         manifest=[item],
-        #     #         overwrite=True,
-        #     #         skip_validation=True
-        #     #     ).node.add_dependency(self.insightssvcacc)
-        #     #     count = count + 1
-        # #write manifest yaml file
-        # yamlmanifest = yaml.dump_all(manifest)
-        # outputyaml = f"{yamloutdir}{construct_id}cwagent-serviceaccount.yaml"
-        # outputfile = open(outputyaml, 'w')
-        # outputfile.write(yamlmanifest)
-        # outputfile.close()
 class eksinsightshelm(core.Stack):
     def __init__(self, scope: core.Construct, construct_id: str, ekscluster = eks.Cluster, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -612,6 +474,12 @@ class ekscwinsights(core.Stack):
             overwrite=True,
             skip_validation=True
         )
+        #write manifest yaml file
+        yamlmanifest = yaml.dump_all(manifest)
+        outputyaml = f"{yamloutdir}{construct_id}cwagent-cloudwatch-Namespace.yaml"
+        outputfile = open(outputyaml, 'w')
+        outputfile.write(yamlmanifest)
+        outputfile.close()
         # service account for cwagent service
         self.cwagentsvcacc = eks.ServiceAccount(
             self,
@@ -661,7 +529,7 @@ class ekscwinsights(core.Stack):
         self.Manifestflt.node.add_dependency(self.Manifestflt)
         #write manifest yaml file
         yamlmanifest = yaml.dump_all(manifest)
-        outputyaml = f"{yamloutdir}{construct_id}cwagent-serviceaccount.yaml"
+        outputyaml = f"{yamloutdir}{construct_id}container-insights.yaml"
         outputfile = open(outputyaml, 'w')
         outputfile.write(yamlmanifest)
         outputfile.close()

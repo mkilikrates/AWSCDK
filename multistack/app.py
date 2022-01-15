@@ -26,9 +26,8 @@ from multistack.eksapp import (
 from multistack.netfw import internetfw as netfw
 from multistack.ec2 import InstanceStack as instance
 from multistack.eksctrl import (
-    eksDNS as eksdns,
-    eksELBHelm as ekselb,
-    eksING as eksing,
+    eksDNSHelm as eksdns,
+    ELBCont as ekselb,
     ekscwinsights as eksinsights,
     eksNGINXMNF as eksnginx
     )
@@ -45,7 +44,19 @@ ipstack = 'Ipv6'
 app = core.App()
 # env 1
 VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-InstanceStack2 = instance(app, "MY-Bastion", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+InstanceStack = instance(app, "MY-Bastion", env=myenv, res = 'bastionlxcwagent', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+EKStack = eks(app, "myeks", env=myenv, res = 'myekspriv', preflst = True, allowsg = InstanceStack.ec2sg, allowall = '', ipstack = ipstack, role = '', vpc = VPCStack.vpc)
+EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSDNSStack.add_dependency(target=EKStack)
+EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
+EKSELBStack.add_dependency(target=EKSDNSStack)
+EKSInsightsStack = eksinsights(app, "insights", env=myenv, ekscluster = EKStack.eksclust)
+EKSInsightsStack.add_dependency(target=EKStack)
+EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbfe', preflst = False, allowsg = '', allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
+EKSAppStack.add_dependency(EKSELBStack)
+EKSAppStack.add_dependency(EKSDNSStack)
+EKSAppStack.add_dependency(EKSInsightsStack)
+
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
 #VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
@@ -64,7 +75,7 @@ InstanceStack2 = instance(app, "MY-Bastion", env=myenv, res = 'winhost', preflst
 #ADStack.add_dependency(target=VPCStack)
 #R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
 #R53RsvStack.add_dependency(target=ADStack)
-#RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsaurorapostgrsmall', vpc = VPCStack2.vpc, bastionsg = BationStack.bastionsg)
+#RDSStack = rds(app, "MYRDS", env=myenv, res = 'rdsauroramysqlsmallcl', preflst = True, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = InstanceStack.ec2sg)
 #CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['active_directory'], vpc = VPCStack.vpc, dirid = ADStack.ds.ref)
 #CVPNStack.add_dependency(target=R53RsvStack)
 #EKStack = eks(app, "myeks", env=myenv, res = 'myekspriv', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, role = '', vpc = VPCStack2.vpc)
@@ -75,9 +86,6 @@ InstanceStack2 = instance(app, "MY-Bastion", env=myenv, res = 'winhost', preflst
 #EKSInsightsStack.add_dependency(target=EKStack)
 #EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
 #EKSELBStack.add_dependency(target=EKSDNSStack)
-#EKSINGStack = eksing(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
-#EKSINGStack.add_dependency(target=EKStack)
-## use one or other 
 #EKSNginxCtrlStack = eksnginx(app, "nginx-controller", res = 'eksnginxfe', env=myenv, ekscluster = EKStack.eksclust, vpc=VPCStack.vpc)
 #EKSNginxCtrlStack.add_dependency(target=EKSELBStack)
 #EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbbe', preflst = False, allowsg = '', allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack2.vpc, elbsg = EKStack.lbsg)

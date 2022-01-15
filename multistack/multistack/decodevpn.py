@@ -129,10 +129,10 @@ class S2SVPNS3(core.Stack):
                     'Role for Lambda to write vpn config files on s3 bucket as Custom Resources in CloudFormation'
                 )
             )
-            self.mylambdarole.add_to_policy(self.mylambdapolicy)
-            self.mylambdarole.add_to_policy(self.mylambdaS3policy)
-            self.mylambdarole.add_to_policy(self.mylambdaSSMpolicy)
-            self.mylambdarole.add_to_policy(self.mylambdaSecretspolicy)
+            self.mylambdarole.add_to_principal_policy(statement=self.mylambdapolicy)
+            self.mylambdarole.add_to_principal_policy(statement=self.mylambdaS3policy)
+            self.mylambdarole.add_to_principal_policy(statement=self.mylambdaSSMpolicy)
+            self.mylambdarole.add_to_principal_policy(statement=self.mylambdaSecretspolicy)
             # Create Lambda Function
             self.mylambda = lpython.PythonFunction(
                 self,

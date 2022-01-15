@@ -37,7 +37,11 @@ class EksStack(core.Stack):
             srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
         # get config for resource
         res = res
-        resvers = resmap['Mappings']['Resources'][res]['Version']
+        if 'Version' in resmap['Mappings']['Resources'][res]:
+            resvers = resmap['Mappings']['Resources'][res]['Version']
+        else:
+            eksvers = eks.KubernetesVersion.V1_21
+
         resname = resmap['Mappings']['Resources'][res]['NAME']
         restype = resmap['Mappings']['Resources'][res]['Type']
         resfargtdns = resmap['Mappings']['Resources'][res]['FargateDNS']
@@ -73,6 +77,10 @@ class EksStack(core.Stack):
             eksvers = eks.KubernetesVersion.V1_18
         if resvers == "V1_19":
             eksvers = eks.KubernetesVersion.V1_19
+        if resvers == "V1_20":
+            eksvers = eks.KubernetesVersion.V1_20
+        if resvers == "V1_21":
+            eksvers = eks.KubernetesVersion.V1_21
         # Iam Role for cluster
         self.eksrole = iam.Role(
             self,

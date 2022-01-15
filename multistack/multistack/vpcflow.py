@@ -60,7 +60,7 @@ class flowlogs(core.Stack):
             description="Role for Delivery VPC Flow Logs",
         )
         # Attach policy to Iam Role
-        self.flowlogrole.add_to_policy(self.flowpolicy)
+        self.flowlogrole.add_to_principal_policy(statement=self.flowpolicy)
         # Create VPC Flow Log for VPC
         ec2.CfnFlowLog(
             self,
