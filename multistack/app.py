@@ -40,22 +40,14 @@ myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.envir
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 route = 'bgp'
 gwtype = 'vgw'
-ipstack = 'Ipv6'
+ipstack = 'Ipv4'
 app = core.App()
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-InstanceStack = instance(app, "MY-Bastion", env=myenv, res = 'bastionlxcwagent', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
-EKStack = eks(app, "myeks", env=myenv, res = 'myekspriv', preflst = True, allowsg = InstanceStack.ec2sg, allowall = '', ipstack = ipstack, role = '', vpc = VPCStack.vpc)
-EKSDNSStack = eksdns(app, "dns-controller", env=myenv, ekscluster = EKStack.eksclust)
-EKSDNSStack.add_dependency(target=EKStack)
-EKSELBStack = ekselb(app, "aws-elb-controller", env=myenv, ekscluster = EKStack.eksclust)
-EKSELBStack.add_dependency(target=EKSDNSStack)
-EKSInsightsStack = eksinsights(app, "insights", env=myenv, ekscluster = EKStack.eksclust)
-EKSInsightsStack.add_dependency(target=EKStack)
-EKSAppStack = eksapp(app, "nginxs3", env=myenv, res = 'eksalbfe', preflst = False, allowsg = '', allowall = '', ekscluster = EKStack.eksclust, ipstack = ipstack, vpc = VPCStack.vpc, elbsg = EKStack.lbsg)
-EKSAppStack.add_dependency(EKSELBStack)
-EKSAppStack.add_dependency(EKSDNSStack)
-EKSAppStack.add_dependency(EKSInsightsStack)
+VPCStack = VPC(app, "VPC", env=myenv, res = 'protectedvpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpcsuri', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
+NetFWStack.add_dependency(target=VPCStack)
+InstanceStack = instance(app, "MY-Bastion", env=myenv, res = 'bastioncdk', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+InstanceStack.add_dependency(target=NetFWStack)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)

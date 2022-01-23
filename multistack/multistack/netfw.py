@@ -150,6 +150,11 @@ class internetfw(core.Stack):
         # create stateful rulegroup
         if 'STATEFULGRP' in resmap['Mappings']['Resources'][res]:
             stateful_rule_group_references = []
+            ruleid = 100
+            if 'StatefulRuleOrder' in resmap['Mappings']['Resources'][res]:
+                ruleorder = resmap['Mappings']['Resources'][res]['StatefulRuleOrder']
+            else:
+                ruleorder = "DEFAULT_ACTION_ORDER"
             for statefulname in resmap['Mappings']['Resources'][res]['STATEFULGRP']:
                 if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                     mystatefulipset = {}
@@ -198,7 +203,13 @@ class internetfw(core.Stack):
                         rule_group=self.netfwstatefulrulegrpdomain
                     )
                     # add rule group to police
-                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn))
+                    stateful_rule_group_references.append(
+                        netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
+                            resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
+                            priority=ruleid
+                            )
+                        )
+                    ruleid = ruleid + 1
                     if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                         self.netfwrulegrpstatefuldomain.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
 
@@ -238,7 +249,13 @@ class internetfw(core.Stack):
                         export_name=f"{construct_id}-NetFwStatefulGrpDomainAlow"
                     )
                     # add rule group to police
-                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn))
+                    stateful_rule_group_references.append(
+                        netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
+                            resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
+                            priority=ruleid
+                            )
+                        )
+                    ruleid = ruleid + 1
                     if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                         self.netfwrulegrpstatefuldomain.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
                 if 'Rules' in resmap['Mappings']['Resources'][statefulname]:
@@ -264,6 +281,9 @@ class internetfw(core.Stack):
                         rule_variables=None,
                         rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
                             stateful_rules=mystatefulrulelst
+                        ),
+                        stateful_rule_options=netfw.CfnRuleGroup.StatefulRuleOptionsProperty(
+                            rule_order=ruleorder
                         )
                     )
                     self.netfwrulegrpstatefulhd = netfw.CfnRuleGroup(
@@ -282,7 +302,13 @@ class internetfw(core.Stack):
                         export_name=f"{construct_id}-NetFwStatefulGrpHeader"
                     )
                     # add rule group to police
-                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn))
+                    stateful_rule_group_references.append(
+                        netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
+                            resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn,
+                            priority=ruleid
+                            )
+                        )
+                    ruleid = ruleid + 1
                     if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
                         self.netfwrulegrpstatefulhd.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
                 # # SURICATA RULE
@@ -299,6 +325,9 @@ class internetfw(core.Stack):
                             suricatarules = open(file, "r").read()
                     self.netfwrulegrpsuricataprop = netfw.CfnRuleGroup.RuleGroupProperty(
                         rule_variables=None,
+                        stateful_rule_options=netfw.CfnRuleGroup.StatefulRuleOptionsProperty(
+                            rule_order=ruleorder
+                        ),
                         rules_source=netfw.CfnRuleGroup.RulesSourceProperty(
                             rules_source_list=None,
                             rules_string=suricatarules
@@ -314,7 +343,13 @@ class internetfw(core.Stack):
                         rule_group=self.netfwrulegrpsuricataprop
                     )
                     # add rule group to police
-                    stateful_rule_group_references.append(netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(resource_arn=self.netfwrulegrpsuricata.attr_rule_group_arn))
+                    stateful_rule_group_references.append(
+                        netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
+                            resource_arn=self.netfwrulegrpsuricata.attr_rule_group_arn,
+                            priority=ruleid
+                            )
+                        )
+                    ruleid = ruleid + 1
         else:
             stateful_rule_group_references = None
         # create a lambda to deal with NetFW Endpoint routes
@@ -364,7 +399,10 @@ class internetfw(core.Stack):
                 stateless_default_actions=["aws:forward_to_sfe"], 
                 stateless_fragment_default_actions=["aws:forward_to_sfe"],
                 stateless_rule_group_references=stateless_rule_group_references,
-                stateful_rule_group_references=stateful_rule_group_references
+                stateful_rule_group_references=stateful_rule_group_references,
+                stateful_engine_options=netfw.CfnFirewallPolicy.StatefulEngineOptionsProperty(
+                    rule_order=ruleorder
+                )
             )
         )
         self.netfwspolicy.add_property_override('FirewallPolicy.StatelessDefaultActions', ["aws:forward_to_sfe"])
