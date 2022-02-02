@@ -23,6 +23,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_autoscaling as asg,
     aws_cloudwatch as cw,
+    aws_sns as sns,
     core,
 )
 from aws_cdk.aws_s3_assets import Asset
@@ -36,7 +37,7 @@ with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 
 class main(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, stackusrdata, snstopic = sns.Topic.topic_arn, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -58,6 +59,20 @@ class main(core.Stack):
             mykey = resmap['Mappings']['Resources'][res]['KEY'] + region
         else:
             mykey = None
+        if snstopic == '':
+            if 'SNSTOPIC' in resmap['Mappings']['Resources'][res]:
+                topicname = resmap['Mappings']['Resources'][res]['SNSTOPIC']
+                snstopic = sns.Topic.from_topic_arn(
+                    self,
+                    f"{construct_id}:SNSTopic",
+                    topic_arn=f"arn:{core.Aws.PARTITION}:sns:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:{topicname}"
+                )
+            else:
+                snstopic = None
+        if 'cooldown' in resmap['Mappings']['Resources'][res]:
+            cooldown = core.Duration.seconds(resmap['Mappings']['Resources'][res]['cooldown'])
+        else:
+            cooldown = core.Duration.seconds(30)
         if 'min' in resmap['Mappings']['Resources'][res]:
             mincap = resmap['Mappings']['Resources'][res]['min']
         else:
@@ -191,12 +206,15 @@ class main(core.Stack):
                     )
                     image = 'Linux'
                     usrdata = ec2.UserData.for_linux()
+                    if stackusrdata !='':
+                        usrdata.add_commands(stackusrdata)  
                     usrdata.add_commands(
-                        "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-                        "rm /usr/bin/aws",
-                        "unzip awscliv2.zip",
-                        "rm awscliv2.zip",
-                        "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                        "if [ $(curl --connect-timeout 3 -X HEAD -LI https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /dev/null -w '%{http_code}\n' -s) == \"200\" ]; then curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'; rm /usr/bin/aws; unzip awscliv2.zip; rm awscliv2.zip; ./aws/install -i /usr/local/aws-cli -b /usr/bin; fi"
+                        # "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                        # "rm /usr/bin/aws",
+                        # "unzip awscliv2.zip",
+                        # "rm awscliv2.zip",
+                        # "./aws/install -i /usr/local/aws-cli -b /usr/bin"
                     )
                 elif imagekind == 'WIN2019FULL':
                     machineimage = ec2.WindowsImage(
@@ -204,6 +222,8 @@ class main(core.Stack):
                     )
                     image = 'Windows'
                     usrdata = ec2.UserData.for_windows()
+                    if stackusrdata !='':
+                        usrdata.add_commands(stackusrdata)  
                     usrdata.add_commands(
                         "$Path = $env:TEMP;",
                         "$Installer = \"msiexec.exe\";",
@@ -220,12 +240,15 @@ class main(core.Stack):
                     )
                     image = 'Linux'
                     usrdata = ec2.UserData.for_linux()
+                    if stackusrdata !='':
+                        usrdata.add_commands(stackusrdata)  
                     usrdata.add_commands(
-                        "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-                        "rm /usr/bin/aws",
-                        "unzip awscliv2.zip",
-                        "rm awscliv2.zip",
-                        "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                        "if [ $(curl --connect-timeout 3 -X HEAD -LI https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /dev/null -w '%{http_code}\n' -s) == \"200\" ]; then curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'; rm /usr/bin/aws; unzip awscliv2.zip; rm awscliv2.zip; ./aws/install -i /usr/local/aws-cli -b /usr/bin; fi"
+                        # "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                        # "rm /usr/bin/aws",
+                        # "unzip awscliv2.zip",
+                        # "rm awscliv2.zip",
+                        # "./aws/install -i /usr/local/aws-cli -b /usr/bin"
                     )
             elif type(imagekind) == dict:
                 if 'NAME' in imagekind:
@@ -245,12 +268,15 @@ class main(core.Stack):
                 )
                 image = 'Linux'
                 usrdata = ec2.UserData.for_linux()
+                if stackusrdata !='':
+                    usrdata.add_commands(stackusrdata)  
                 usrdata.add_commands(
-                    "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-                    "rm /usr/bin/aws",
-                    "unzip awscliv2.zip",
-                    "rm awscliv2.zip",
-                    "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                    "if [ $(curl --connect-timeout 3 -X HEAD -LI https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /dev/null -w '%{http_code}\n' -s) == \"200\" ]; then curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'; rm /usr/bin/aws; unzip awscliv2.zip; rm awscliv2.zip; ./aws/install -i /usr/local/aws-cli -b /usr/bin; fi"
+                    # "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                    # "rm /usr/bin/aws",
+                    # "unzip awscliv2.zip",
+                    # "rm awscliv2.zip",
+                    # "./aws/install -i /usr/local/aws-cli -b /usr/bin"
                 )
         else:
             machineimage = ec2.AmazonLinuxImage(
@@ -259,13 +285,26 @@ class main(core.Stack):
             )
             image = 'Linux'
             usrdata = ec2.UserData.for_linux()
+            if stackusrdata !='':
+                usrdata.add_commands(stackusrdata)  
             usrdata.add_commands(
-                "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-                "rm /usr/bin/aws",
-                "unzip awscliv2.zip",
-                "rm awscliv2.zip",
-                "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                "if [ $(curl --connect-timeout 3 -X HEAD -LI https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /dev/null -w '%{http_code}\n' -s) == \"200\" ]; then curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'; rm /usr/bin/aws; unzip awscliv2.zip; rm awscliv2.zip; ./aws/install -i /usr/local/aws-cli -b /usr/bin; fi"
+                # "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                # "rm /usr/bin/aws",
+                # "unzip awscliv2.zip",
+                # "rm awscliv2.zip",
+                # "./aws/install -i /usr/local/aws-cli -b /usr/bin"
             )
+        # SNS Topic
+        if snstopic != None:
+            notification_configuration = [
+                asg.NotificationConfiguration(
+                    topic=snstopic,
+                    scaling_events=asg.ScalingEvents.ALL
+                )
+            ]
+        else:
+            notification_configuration = None
 
         # create Auto Scalling Group
         self.asg = asg.AutoScalingGroup(
@@ -283,18 +322,13 @@ class main(core.Stack):
             desired_capacity=desircap,
             min_capacity=mincap,
             max_capacity=maxcap,
+            cooldown=cooldown,
             group_metrics=[asg.GroupMetrics.all()],
             vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
             role=resrole,
-            associate_public_ip_address=reseip
-        )
-        # update awscli
-        self.asg.add_user_data(
-            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-            "rm /usr/bin/aws",
-            "unzip awscliv2.zip",
-            "rm awscliv2.zip",
-            "./aws/install -i /usr/local/aws-cli -b /usr/bin",
+            user_data=usrdata,
+            associate_public_ip_address=reseip,
+            notifications=notification_configuration
         )
         if 'USRFILE' in resmap['Mappings']['Resources'][res]:
             userdata = resmap['Mappings']['Resources'][res]['USRFILE']

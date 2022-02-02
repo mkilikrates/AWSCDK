@@ -26,12 +26,13 @@ aws_cdk.aws_ecs_patterns
 aws_cdk.aws_s3_assets
 aws_cdk.aws_cloudfront
 aws_cdk.aws_servicediscovery
+aws_cdk.aws_sns
 cdk_ec2_key_pair
 PyYAML
 constructs
 requests
 cdk8s
-cdk8s-plus-22
+#cdk8s-plus-22
 cdk8s_external_dns
 cdk8s_aws_alb_ingress_controller
 cdk8s_aws_load_balancer_controller

@@ -19,6 +19,7 @@ from multistack.ds import myds
 from multistack.r53res import rslv
 from multistack.eks import EksStack as eks
 from multistack.ecs import EcsStack as ecs
+from multistack.sns import main as sns
 from multistack.eksapp import (
     MyAppStack as eksapp,
     AppStack as simpleapp
@@ -43,11 +44,7 @@ gwtype = 'vgw'
 ipstack = 'Ipv4'
 app = core.App()
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'protectedvpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-NetFWStack = netfw(app, "MYNETFW", env=myenv, vpcname = 'protectedvpc', res = 'netfwsinglevpcsuri', vpc = VPCStack.vpc, ipstack = ipstack, vpcstackname = VPCStack.stack_name)
-NetFWStack.add_dependency(target=VPCStack)
-InstanceStack = instance(app, "MY-Bastion", env=myenv, res = 'bastioncdk', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
-InstanceStack.add_dependency(target=NetFWStack)
+SNSStack = sns(app, "MY-SNSTopic", env=myenv, res = "mysns")
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
@@ -92,16 +89,17 @@ InstanceStack.add_dependency(target=NetFWStack)
 #S2SVPNStack.add_dependency(GatewayStack)
 #S3VPNStack = vpns3(app, "MY-S2SVPNS3", env=myenv2, route = route, vpnid = '', remoteregion = region, funct ='', res = 'vpnciscocsrbgp', vpc = VPCStack2.vpc, vpnstackname = 'MY-VPN')
 #S3VPNStack.add_dependency(S2SVPNStack)
-#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'myEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
+#VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = 'myEndpoints', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpcsrvpolice = '', vpcsrvtype = '', vpcsrvsubgrp = '', vpcsrvname = '', vpcsrvprivdomain = '', vpcsrvport ='', vpc = VPCStack.vpc, vpcstack = VPCStack.stack_name)
 #VpcEndpointsStack.add_dependency(ECStack)
-#InstanceStack = instance(app, "My-linux", env=myenv, res = 'bastionprotect', preflst = False, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+#InstanceStack = instance(app, "My-linux", env=myenv, res = 'bastion', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
 #InstanceStack.add_dependency(target=VpcEndpointsStack)
 #VPNSRVStack2 = instance(app, "My-VPNSRV", env=myenv2, res = 'vpnciscocsrbgp', preflst = True, allowsg = '', instpol = '', userdata = { "Secrets" : S3VPNStack.mycustomresource.get_att_string('USRDATA')}, eipall = S3VPNStack.mycustomresource.get_att_string('EIPAllocid'), allowall = '', ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
 #InstanceStack2 = instance(app, "My-windows", env=myenv, res = 'winhost', preflst = False, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
 #InstanceStack2.add_dependency(target=VpcEndpointsStack)
 #BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #BationStack.add_dependency(target=GatewayStack2)
-#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'winhost', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', vpc = VPCStack2.vpc)
+#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'iperfsrvIso', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', stackusrdata = '', snstopic = '', vpc = VPCStack.vpc)
 #ASGStack.add_dependency(target=BationStack)
+#SNSStack = sns(app, "MY-SNSTopic", env=myenv, res = "mysns")
 
 app.synth()

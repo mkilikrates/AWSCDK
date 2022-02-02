@@ -179,11 +179,19 @@ class alb(core.Stack):
                 )
             # allow egress access to target
             if tgrt != '':
-                self.tgrp = self.elblistnrs.add_targets(
-                    f"{construct_id}:My Default Fleet",
+                self.tgrp = elb.ApplicationTargetGroup(
+                    self,
+                    f"{construct_id}TargetGroup",
+                    target_type=elb.TargetType.INSTANCE,
+                    vpc=self.vpc,
                     port=restgport,
                     targets=[tgrt]
                 )
+                self.elblistnrs.add_target_groups(
+                    f"{construct_id}:My Default Fleet",
+                    target_groups=[self.tgrp]
+                )
+
             if tgrtip != '':
                 self.tgrp = elb.ApplicationTargetGroup(
                     self,
@@ -256,6 +264,73 @@ class alb(core.Stack):
                     port=restgport,
                     targets=[tgrt]
                 )
+                if 'HC' in resmap['Mappings']['Resources'][res]:
+                    hc = resmap['Mappings']['Resources'][res]['HC']
+                else:
+                    hc = True
+                if 'HCPORT' in resmap['Mappings']['Resources'][res]:
+                    hcport = resmap['Mappings']['Resources'][res]['HCPORT']
+                else:
+                    hcport = 'traffic-port'
+                if 'HCPROTO' in resmap['Mappings']['Resources'][res]:
+                    hcproto = resmap['Mappings']['Resources'][res]['HCPROTO']
+                    if hcproto == 'TCP':
+                        hcproto = elb.Protocol.TCP
+                    elif hcproto == 'UDP':
+                        hcproto = elb.Protocol.UDP
+                    elif hcproto == 'TCP_UDP':
+                        hcproto = elb.Protocol.TCP_UDP
+                    elif hcproto == 'HTTP':
+                        hcproto = elb.Protocol.HTTP
+                    elif hcproto == 'HTTPS':
+                        hcproto = elb.Protocol.HTTPS
+                    elif hcproto == 'TLS':
+                        hcproto = elb.Protocol.TLS
+                    if resmap['Mappings']['Resources'][res]['HCPROTO'] == 'HTTP' or resmap['Mappings']['Resources'][res]['HCPROTO'] == 'HTTPS':
+                        if 'HCPath' in resmap['Mappings']['Resources'][res]:
+                            hcpath = resmap['Mappings']['Resources'][res]['HCPath']
+                        else:
+                            hcpath = '/'
+                else:
+                    hcpath = None
+                    hcproto = None
+                if 'HCGRPC' in resmap['Mappings']['Resources'][res]:
+                    hcgrpc = resmap['Mappings']['Resources'][res]['HCGRPC']
+                else:
+                    hcgrpc = None
+                if 'HCHTTP' in resmap['Mappings']['Resources'][res]:
+                    hchttp = resmap['Mappings']['Resources'][res]['HCHTTP']
+                else:
+                    hchttp = None
+                if 'HCCount' in resmap['Mappings']['Resources'][res]:
+                    hccount = resmap['Mappings']['Resources'][res]['HCCount']
+                else:
+                    hccount = 3
+                if 'HCUnCount' in resmap['Mappings']['Resources'][res]:
+                    hcuncount = resmap['Mappings']['Resources'][res]['HCUnCount']
+                else:
+                    hcuncount = 3
+                if 'HCInt' in resmap['Mappings']['Resources'][res]:
+                    hcint = core.Duration.seconds(resmap['Mappings']['Resources'][res]['HCInt'])
+                else:
+                    hcint = core.Duration.seconds(30)
+                if 'HCtmt' in resmap['Mappings']['Resources'][res]:
+                    hctmt = core.Duration.seconds(resmap['Mappings']['Resources'][res]['HCtmt'])
+                else:
+                    hctmt = core.Duration.seconds(10)
+                if hc == True:
+                    self.tgrp.configure_health_check(
+                        enabled=hc,
+                        port=str(hcport),
+                        protocol=hcproto,
+                        healthy_grpc_codes=hcgrpc,
+                        healthy_http_codes=hchttp,
+                        healthy_threshold_count=hccount,
+                        unhealthy_threshold_count=hcuncount,
+                        interval=hcint,
+                        path=hcpath,
+                        timeout=hctmt
+                    )
             if tgrtip != '':
                 self.tgrp = elb.NetworkTargetGroup(
                     self,
@@ -311,6 +386,14 @@ class alb(core.Stack):
                     acceptance_required=resaccept,
                     allowed_principals=principal
                 )
+                if appdomain != '':
+                    self.vpcendpointsrvdns = r53.VpcEndpointServiceDomainName(
+                        self,
+                        f"{construct_id}:VPCEndpointServiceDomain",
+                        domain_name=f"{appname}.{appdomain}",
+                        endpoint_service=self.vpcendpointsrv,
+                        public_hosted_zone=self.hz
+                    )
                 core.CfnOutput(
                     self,
                     f"{construct_id}:VPCEndpointServiceName",
@@ -336,7 +419,7 @@ class alb(core.Stack):
                 record_name=f"{appname}.{appdomain}",
                 target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.elb))
             )
-            core.CfnOutput(
+            self.elbdns = core.CfnOutput(
                 self,
                 f"{construct_id}:APP DNS",
                 value=f"{appname}.{appdomain}"
