@@ -44,7 +44,12 @@ gwtype = 'vgw'
 ipstack = 'Ipv4'
 app = core.App()
 # env 1
-SNSStack = sns(app, "MY-SNSTopic", env=myenv, res = "mysns")
+VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['federated'], vpc = VPCStack.vpc, dirid = '')
+CVPNStack.add_dependency(target=VPCStack)
+VPCStack2 = VPC(app, "VPC2", env=myenv, res = '', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+InstanceStack = instance(app, "host", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
+InstanceStack.add_dependency(target=VPCStack2)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)

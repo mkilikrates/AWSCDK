@@ -334,6 +334,8 @@ class InstanceStack(core.Stack):
         if userdata == '':
             if 'USRFILE' in resmap['Mappings']['Resources'][res]:
                 userdata = resmap['Mappings']['Resources'][res]['USRFILE']
+            else:
+                userdata = None
         if type(userdata) == str and image == 'Linux' or image == 'Windows':
             usrdatafile = userdata
             userdata = open(usrdatafile, "r").read()

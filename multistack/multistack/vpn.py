@@ -42,8 +42,15 @@ class cvpn(core.Stack):
             ressplit = False
         if 'Portal' in resmap['Mappings']['Resources'][res]:
             resportal = resmap['Mappings']['Resources'][res]['Portal']
+            if resportal == 'enabled':
+                if 'PORTALIDPARN' in resmap['Mappings']['Resources'][res]:
+                    resportalarn = resmap['Mappings']['Resources'][res]['PORTALIDPARN']
+                else:
+                    resportal = 'disabled'
+                    resportalarn = None
         else:
             resportal = 'disabled'
+            resportalarn = None
         if 'VPNTRANSP' in resmap['Mappings']['Resources'][res]:
             resvpntransp = resmap['Mappings']['Resources'][res]['VPNTRANSP']
         else:
@@ -96,7 +103,8 @@ class cvpn(core.Stack):
                     {
                         "type": "federated-authentication",
                         "federatedAuthentication": {
-                            "samlProviderArn": idparn
+                            "samlProviderArn": idparn,
+                            "selfServiceSamlProviderArn" : resportalarn
                         }
                     }
                 )
@@ -109,7 +117,6 @@ class cvpn(core.Stack):
                         }
                     }
                 )
-
         self.cvpn = ec2.CfnClientVpnEndpoint(
             self,
             f"{construct_id}:cvpn",
