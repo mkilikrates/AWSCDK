@@ -207,17 +207,46 @@ class InstanceStack(core.Stack):
                         "./aws/install -i /usr/local/aws-cli -b /usr/bin"
                     )
             elif type(imagekind) == dict:
+                if 'TYPE' in imagekind:
+                    image = imagekind['TYPE']
+                    if image == 'Appliance':
+                        usrdata = None
+                    if image == 'Linux':
+                        ostype = ec2.OperatingSystemType.LINUX
+                        usrdata = ec2.UserData.for_linux()
+                        usrdata.add_commands(
+                            "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
+                            "rm /usr/bin/aws",
+                            "unzip awscliv2.zip",
+                            "rm awscliv2.zip",
+                            "./aws/install -i /usr/local/aws-cli -b /usr/bin"
+                        )
+                    if image == 'Windows':
+                        ostype = ec2.OperatingSystemType.WINDOWS
+                        usrdata = ec2.UserData.for_windows()
+                        usrdata.add_commands(
+                            "$Path = $env:TEMP;",
+                            "$Installer = \"msiexec.exe\";",
+                            "$Package = \"AWSCLIV2.msi\";",
+                            "$arguments = \"/I $Path\$Package /qn\";",
+                            "Invoke-WebRequest \"https://awscli.amazonaws.com/AWSCLIV2.msi\" -OutFile     $Path\$Package;",
+                            "Start-Process $Installer -Wait -ArgumentList $arguments;"
+                            "Remove-Item $Path\$Package"
+                        )
+                    if image == 'Unknown':
+                        ostype = ec2.OperatingSystemType.UNKNOWN
                 if 'NAME' in imagekind:
                     imagename = imagekind['NAME']
-                if 'FILTER' in imagekind:
-                    imagefilter = imagekind['FILTER']
-                machineimage = ec2.LookupMachineImage(
-                    name = imagename,
-                    owners=['aws-marketplace'], 
-                    filters=imagefilter
-                )
-                image = 'Appliance'
-                usrdata = None
+                    if 'FILTER' in imagekind:
+                        imagefilter = imagekind['FILTER']
+                    machineimage = ec2.LookupMachineImage(
+                        name = imagename,
+                        owners=['aws-marketplace'], 
+                        filters=imagefilter
+                    )
+                if 'SSMNAME' in imagekind:
+                    imagename = imagekind['SSMNAME']
+                    machineimage = ec2.MachineImage.from_ssm_parameter(parameter_name=imagename, os=ostype, user_data=usrdata)
             else:
                 machineimage = ec2.AmazonLinuxImage(
                     edition=ec2.AmazonLinuxEdition.STANDARD,
@@ -309,7 +338,6 @@ class InstanceStack(core.Stack):
                         "Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name;",
                         "If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)\n",
                     )
-       
         # create instance
         self.instance = ec2.Instance(
             self,
@@ -366,6 +394,14 @@ class InstanceStack(core.Stack):
                 )
                 usrdata = ''.join(usrdatalst)
                 self.instance.add_user_data(usrdata)
+        elif type(userdata) == dict and image == 'Appliance':
+            if 'Secrets' in userdata:
+                data = userdata['Secrets']
+                secret = secretsmanager.Secret.from_secret_complete_arn(self, f"{construct_id}Usrdata", secret_complete_arn=data)
+                secret.grant_read(self.instance.role)
+                usrdata=secret.secret_value.to_string()
+                self.instance.instance.add_property_override("UserData", {"Fn::Join": ["", usrdata]})
+
         elif type(userdata) == dict:
             if 'Secrets' in userdata:
                 data = userdata['Secrets']
@@ -380,80 +416,6 @@ class InstanceStack(core.Stack):
         # add my key
         if mykey != '':
             self.instance.instance.add_property_override("KeyName", mykey)
-        # # update awscli
-        # if image == 'Linux':
-        #     self.instance.add_user_data(
-        #         "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'",
-        #         "rm /usr/bin/aws",
-        #         "unzip awscliv2.zip",
-        #         "rm awscliv2.zip",
-        #         "./aws/install -i /usr/local/aws-cli -b /usr/bin"
-        #     )
-        # if image == 'Windows':
-        #     self.instance.add_user_data(
-        #         "$Path = $env:TEMP;",
-        #         "$Installer = \"msiexec.exe\";",
-        #         "$Package = \"AWSCLIV2.msi\";",
-        #         "$arguments = \"/I $Path\$Package /qn\";",
-        #         "Invoke-WebRequest \"https://awscli.amazonaws.com/AWSCLIV2.msi\" -OutFile     $Path\$Package;",
-        #         "Start-Process $Installer -Wait -ArgumentList $arguments;",
-        #         "Remove-Item $Path\$Package"
-        #     )
-        # add key on ~.ssh/ for ec2-user
-        # if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
-        #     self.key.grant_read_on_private_key(self.instance.role)
-        #     if image == 'Linux':
-        #         self.instance.add_user_data(
-        #             f"aws --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
-        #             f"chmod 400 /home/ec2-user/.ssh/{construct_id}{keyname}-{region}.pem",
-        #             "chown -R ec2-user:ec2-user /home/ec2-user/.ssh",
-        #             "export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)",
-        #             f"echo 'alias ec2=\"ssh -l ec2-user -i ~/.ssh/{construct_id}{keyname}-{region}.pem\"' >>/home/ec2-user/.bashrc\n"
-        #         )
-        #     if image == 'Windows':
-        #         self.instance.add_user_data(
-        #             "mkdir $home\\.ssh\n",
-        #             "$cmd = \"& \'"f"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\' --region {region} secretsmanager get-secret-value --secret-id ec2-ssh-key/{construct_id}{keyname}-{region}/private --query SecretString --output text > $home\\.ssh\\{construct_id}{keyname}-{region}.pem\"""; $Process2Monitor = \"msiexec\"; Do { $ProcessesFound = Get-Process | ?{$Process2Monitor -contains $_.Name} | Select-Object -ExpandProperty Name; If ($ProcessesFound) { \"Still running: $($ProcessesFound -join ', ')\" | Write-Host; Start-Sleep -Seconds 5 } else { Invoke-Expression -Command $cmd -ErrorAction SilentlyContinue -Verbose } } Until (!$ProcessesFound)"
-        #         )
-        # if userdata == '':
-        #     if 'USRFILE' in resmap['Mappings']['Resources'][res]:
-        #         userdata = resmap['Mappings']['Resources'][res]['USRFILE']
-        # else:
-        #     if type(userdata) == str and image == 'Linux' or image == 'Windows':
-        #         usrdatafile = userdata
-        #         userdata = open(usrdatafile, "r").read()
-        #         self.instance.add_user_data(userdata)
-        #     elif type(userdata) == list and image == 'Linux':
-        #         usrdatalst = []
-        #         with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
-        #             for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
-        #                 filename = usractions['filename']
-        #                 execution = usractions['execution']
-        #                 usrdatalst.append(f"{execution} {filename}\n")
-        #                 usrdatalst.append(f"rm {filename}\n")
-        #                 zip.write(filename)
-        #         if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
-        #             customscript = Asset(
-        #                 self,
-        #                 f"{construct_id}customscript",
-        #                 path=f"cdk.out/{construct_id}customscript.zip"
-        #             )
-        #             customscript.grant_read(self.instance.role)
-        #             self.instance.add_user_data(
-        #                 "yum install -y unzip",
-        #                 f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
-        #                 f"unzip customscript.zip",
-        #                 f"rm customscript.zip\n"
-        #             )
-        #     elif type(userdata) == str and image == 'Appliance':
-        #             if userdata.startswith('SSM/'):
-        #                 data = userdata.replace('SSM', '')
-        #                 userdata = ssm.StringParameter.from_secure_string_parameter_attributes(
-        #                     self,
-        #                     "USRDATA",
-        #                     parameter_name=data
-        #                 ).string_value
-        #             self.instance.add_user_data(userdata)
         # add instance permissions for cloudwatchagent
         if 'CWAgent' in resmap['Mappings']['Resources'][res]:
             self.cwagentpolicy = iam.PolicyStatement(

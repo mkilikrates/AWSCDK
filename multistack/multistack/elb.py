@@ -373,6 +373,7 @@ class alb(core.Stack):
                     principal = []
                     principal.append(iam.ArnPrincipal(resprinc))
                 if type(resprinc) == list:
+                    principal = []
                     for each in resprinc:
                         principal.append(iam.ArnPrincipal(each))
                 if 'AUTOACCEPT' in resmap['Mappings']['Resources'][res]:

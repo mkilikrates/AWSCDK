@@ -1,5 +1,6 @@
 import os
 import json
+from platform import platform
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_ecs as ecs,
@@ -37,6 +38,61 @@ class EcsStack(core.Stack):
         # get config for resource
         res = res
         resname = resmap['Mappings']['Resources'][res]['NAME']
+        # create security group for ecs
+        self.ecssg = ec2.SecurityGroup(
+            self,
+            f"{construct_id}SG",
+            allow_all_outbound=True,
+            vpc=self.vpc
+        )
+        # add egress rule
+        ec2.CfnSecurityGroupEgress(
+            self,
+            f"{construct_id}EgressAllIpv4",
+            ip_protocol="-1",
+            cidr_ip="0.0.0.0/0",
+            group_id=self.ecssg.security_group_id
+        )
+        if self.ipstack == 'Ipv6':
+            ec2.CfnSecurityGroupEgress(
+                self,
+                f"{construct_id}EgressAllIpv6",
+                ip_protocol="-1",
+                cidr_ipv6="::/0",
+                group_id=self.ecssg.security_group_id
+            )
+        # add ingress rule
+        if allowsg != '':
+            self.ecssg.add_ingress_rule(
+                allowsg,
+                ec2.Port.all_traffic()
+            )
+        if preflst == True:
+            srcprefix = self.map.find_in_map(core.Aws.REGION, 'PREFIXLIST')
+            self.ecssg.add_ingress_rule(
+                ec2.Peer.prefix_list(srcprefix),
+                ec2.Port.all_traffic()
+            )
+        if allowall == True:
+            self.ecssg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.all_traffic()
+            )
+            if self.ipstack == 'Ipv6':
+                self.ecssg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.all_traffic()
+                )
+        if type(allowall) == int or type(allowall) == float:
+            self.ecssg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(allowall)
+            )
+            if self.ipstack == 'Ipv6':
+                self.ecssg.add_ingress_rule(
+                    ec2.Peer.any_ipv6(),
+                    ec2.Port.tcp(allowall)
+                )
         # check for logs
         if 'EXECCMDKMS' in resmap['Mappings']['Resources'][res]:
             if resmap['Mappings']['Resources'][res]['EXECCMDKMS'] == True:
@@ -112,22 +168,57 @@ class EcsStack(core.Stack):
         # check roles
         if 'TASKEXECROLEARN' in resmap['Mappings']['Resources'][res]:
             taskexecrolearn = resmap['Mappings']['Resources'][res]['TASKEXECROLEARN']
-            taskexecrole = iam.Role.from_role_arn(
+            self.taskexecrole = iam.Role.from_role_arn(
                 self,
                 f"{construct_id}taskexecrole",
                 role_arn=taskexecrolearn
             )
         else:
-            taskexecrole = None
+            pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonECSTaskExecutionRolePolicy')
+            self.taskexecrole = iam.Role.add_managed_policy(pol)
         if 'TASKROLEARN' in resmap['Mappings']['Resources'][res]:
             taskrolearn = resmap['Mappings']['Resources'][res]['TASKROLEARN']
-            taskrole = iam.Role.from_role_arn(
+            self.eksrole = iam.Role.from_role_arn(
                 self,
                 f"{construct_id}taskrole",
                 role_arn=taskrolearn
             )
         else:
-            taskrole = None
+            self.taskrole = iam.Role(
+                self,
+                f"{construct_id}-taskrole",
+                assumed_by=iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+                description="Role for ECS Task {construct_id}",
+            )
+        if 'TASKROLE' in resmap['Mappings']['Resources'][res]:
+            roles = resmap['Mappings']['Resources'][res]['TASKROLE']
+            for police in roles:
+                newpol = {}
+                if 'Actions' in police:
+                    newpol["actions"] = police['Actions']
+                if 'Conditions' in police:
+                    newpol["conditions"] = police['Conditions']
+                if 'Effect' in police:
+                    if police['Effect'] == "allow":
+                        newpol["effect"] = iam.Effect.ALLOW
+                    if police['Effect'] == "deny":
+                        newpol["effect"] = iam.Effect.DENY
+                if 'NoActions' in police:
+                    newpol["not_actions"] = police['NoActions']
+                if 'NoResources' in police:
+                    newpol["not_resources"] = police['NoResources']
+                if 'Principals' in police:
+                    if police['Principals'] == '*':
+                        newpol["principals"] = [iam.StarPrincipal()]
+                    else:
+                        newpol["principals"] = [iam.ArnPrincipal(police['Principals'])]
+                if 'NoPrincipals' in police:
+                    newpol["not_principals"] = police['NoPrincipals']
+                if 'Resources' in police:
+                    newpol["resources"] = police['Resources']
+                if 'SID' in police:
+                    newpol["sid"] = police['SID']
+                self.taskrole.add_to_policy(statement=iam.PolicyStatement(**newpol))
         # check cluster type and instance size
         if 'Type' in resmap['Mappings']['Resources'][res]:
             restype = resmap['Mappings']['Resources'][res]['Type']
@@ -217,38 +308,43 @@ class EcsStack(core.Stack):
                 taskstor = resmap['Mappings']['Resources'][res]['STORAGE']
             else:
                 taskstor = 20
+            if 'PLATFORM'in resmap['Mappings']['Resources'][res]:
+                resplatform = ecs.FargatePlatformVersion(resmap['Mappings']['Resources'][res]['PLATFORM'])
+            else:
+                resplatform = ecs.FargatePlatformVersion.LATEST
             self.task = ecs.FargateTaskDefinition(
                 self,
                 f"{construct_id}-task",
                 cpu=taskcpu,
                 #ephemeral_storage_gib=taskstor,
                 memory_limit_mib=taskmem,
-                execution_role=taskexecrole,
-                task_role=taskrole
+                execution_role=self.taskexecrole,
+                task_role=self.eksrole
             )
         # check for container to be used
         if 'DOCKERIMAGE' in resmap['Mappings']['Resources'][res]:
             dockerimage = resmap['Mappings']['Resources'][res]['DOCKERIMAGE']
-            self.container = self.task.add_container(
-                f"{construct_id}-task-web",
-                image=ecs.ContainerImage.from_registry(
-                    dockerimage
-                ),
-                memory_limit_mib=256,
-                container_name=f"{construct_id}-task-web"
-            )
-            if 'CONTPORT' in resmap['Mappings']['Resources'][res]:
-                contport = resmap['Mappings']['Resources'][res]['CONTPORT']
-                if 'HOSTPORT' in resmap['Mappings']['Resources'][res]:
-                    hostport = resmap['Mappings']['Resources'][res]['HOSTPORT']
-                else:
-                    hostport = contport
-                portmap = ecs.PortMapping(
-                    container_port=contport,
-                    host_port=hostport,
-                    protocol=ecs.Protocol.TCP
+            if type(dockerimage) == str:
+                self.container = self.task.add_container(
+                    f"{construct_id}-task-web",
+                    image=ecs.ContainerImage.from_registry(
+                        dockerimage
+                    ),
+                    memory_limit_mib=256,
+                    container_name=f"{construct_id}-task-web"
                 )
-                self.container.add_port_mappings(portmap)
+                if 'CONTPORT' in resmap['Mappings']['Resources'][res]:
+                    contport = resmap['Mappings']['Resources'][res]['CONTPORT']
+                    if 'HOSTPORT' in resmap['Mappings']['Resources'][res]:
+                        hostport = resmap['Mappings']['Resources'][res]['HOSTPORT']
+                    else:
+                        hostport = contport
+                    portmap = ecs.PortMapping(
+                        container_port=contport,
+                        host_port=hostport,
+                        protocol=ecs.Protocol.TCP
+                    )
+                    self.container.add_port_mappings(portmap)
         if 'SERVICE' in resmap['Mappings']['Resources'][res]:
             if resmap['Mappings']['Resources'][res]['SERVICE'] == True:
                 if restype == 'EC2':
@@ -298,15 +394,19 @@ class EcsStack(core.Stack):
                         self,
                         f"{construct_id}-service",
                         cluster=self.ecs,
-                        task_definition=self.task,
+                        task_definition=self.task
                     )
+                # FargateService - https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_ecs/FargateService.html
                 if restype == 'FARGATE':
                     self.srvc = ecs.FargateService(
                         self,
                         f"{construct_id}-service",
                         task_definition=self.task,
+                        platform_version=resplatform,
                         vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                        cluster=self.ecs
+                        cluster=self.ecs,
+                        assign_public_ip=respubip,
+                        security_groups=[self.ecssg]
                     )
                     # add rules to node group security group to node
                     if allowsg != '':

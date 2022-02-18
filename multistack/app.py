@@ -43,13 +43,15 @@ route = 'bgp'
 gwtype = 'vgw'
 ipstack = 'Ipv4'
 app = core.App()
+
+
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-CVPNStack = cvpn(app, "MY-CVPN", env=myenv, res = 'cvpn', auth = ['federated'], vpc = VPCStack.vpc, dirid = '')
-CVPNStack.add_dependency(target=VPCStack)
-VPCStack2 = VPC(app, "VPC2", env=myenv, res = '', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-InstanceStack = instance(app, "host", env=myenv, res = 'winhost', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
-InstanceStack.add_dependency(target=VPCStack2)
+VPCStack = VPC(app, "MYVPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 1, ipstack = ipstack)
+InstanceStack2 = instance(app, "My-windows", env=myenv, res = 'win2022', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+
+#ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = '', vpc = VPCStack.vpc)
+#RDSStack = rds(app, "DB", env=myenv, res = 'rdsauroramysqlsservlesscl', preflst = True, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = ECStack.ecssg)
+#RDSStack.add_dependency(target=VPCStack)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
@@ -64,7 +66,7 @@ InstanceStack.add_dependency(target=VPCStack2)
 #BationStack.add_dependency(target=GatewayStack)
 #SDStack = sd(app, "My-SD", env=myenv, res = 'ecsbe', ipstack = ipstack, elb = '', vpc = VPCStack.vpc)
 #ECStack = ecs(app, "myecs", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = SDStack.servicename, vpc = VPCStack.vpc)
-#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'albbe80', preflst = False, tgrtip = '', allowsg = '', allowall = 80, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
+#ELBStack = alb(app, "MY-ELB", env=myenv, res = 'elbfe', preflst = False, tgrtip = '', allowsg = '', allowall = 443, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
 #ADStack = myds(app, "MYDS", env=myenv, res = 'dirserv', vpc = VPCStack.vpc)
 #ADStack.add_dependency(target=VPCStack)
 #R53RsvStack = rslv(app, "r53resolver", env=myenv, res = 'r53rslvout', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc, dsid = ADStack.ds)
@@ -103,7 +105,7 @@ InstanceStack.add_dependency(target=VPCStack2)
 #InstanceStack2.add_dependency(target=VpcEndpointsStack)
 #BationStack = bastion(app, "MY-Bastion", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', allowall = '', ipstack = ipstack, vpc = VPCStack.vpc)
 #BationStack.add_dependency(target=GatewayStack2)
-#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'iperfsrvIso', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', stackusrdata = '', snstopic = '', vpc = VPCStack.vpc)
+#ASGStack = asg(app, "MY-ASG", env=myenv, res = 'nginxbe', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', stackusrdata = '', snstopic = '', vpc = VPCStack.vpc)
 #ASGStack.add_dependency(target=BationStack)
 #SNSStack = sns(app, "MY-SNSTopic", env=myenv, res = "mysns")
 

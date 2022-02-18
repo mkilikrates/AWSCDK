@@ -115,7 +115,7 @@ class internetfw(core.Stack):
                         tcp_flags = rule['TFLAGS']
                         mystatelessruleatt['tcp_flags'] = tcp_flags
                     mystatelessrulelst.append(netfw.CfnRuleGroup.StatelessRuleProperty(
-                        priority= rule['PRI'],
+                        priority=rule['PRI'],
                         rule_definition=netfw.CfnRuleGroup.RuleDefinitionProperty(
                             actions=[rule['Actions']],
                             match_attributes=netfw.CfnRuleGroup.MatchAttributesProperty(**mystatelessruleatt)
@@ -203,10 +203,14 @@ class internetfw(core.Stack):
                         rule_group=self.netfwstatefulrulegrpdomain
                     )
                     # add rule group to police
+                    if ruleorder == 'DEFAULT_ACTION_ORDER':
+                        priority = None
+                    else:
+                        priority = ruleid
                     stateful_rule_group_references.append(
                         netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
                             resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
-                            priority=ruleid
+                            priority=priority
                             )
                         )
                     ruleid = ruleid + 1
@@ -249,10 +253,14 @@ class internetfw(core.Stack):
                         export_name=f"{construct_id}-NetFwStatefulGrpDomainAlow"
                     )
                     # add rule group to police
+                    if ruleorder == 'DEFAULT_ACTION_ORDER':
+                        priority = None
+                    else:
+                        priority = ruleid
                     stateful_rule_group_references.append(
                         netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
                             resource_arn=self.netfwrulegrpstatefuldomain.attr_rule_group_arn,
-                            priority=ruleid
+                            priority=priority
                             )
                         )
                     ruleid = ruleid + 1
@@ -302,10 +310,14 @@ class internetfw(core.Stack):
                         export_name=f"{construct_id}-NetFwStatefulGrpHeader"
                     )
                     # add rule group to police
+                    if ruleorder == 'DEFAULT_ACTION_ORDER':
+                        priority = None
+                    else:
+                        priority = ruleid
                     stateful_rule_group_references.append(
                         netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
                             resource_arn=self.netfwrulegrpstatefulhd.attr_rule_group_arn,
-                            priority=ruleid
+                            priority=priority
                             )
                         )
                     ruleid = ruleid + 1
@@ -343,13 +355,19 @@ class internetfw(core.Stack):
                         rule_group=self.netfwrulegrpsuricataprop
                     )
                     # add rule group to police
+                    if ruleorder == 'DEFAULT_ACTION_ORDER':
+                        priority = None
+                    else:
+                        priority = ruleid
                     stateful_rule_group_references.append(
                         netfw.CfnFirewallPolicy.StatefulRuleGroupReferenceProperty(
                             resource_arn=self.netfwrulegrpsuricata.attr_rule_group_arn,
-                            priority=ruleid
+                            priority=priority
                             )
                         )
                     ruleid = ruleid + 1
+                    if 'IPSET' in resmap['Mappings']['Resources'][statefulname]:
+                        self.netfwrulegrpsuricata.add_property_override("RuleGroup.RuleVariables.IPSets", mystatefulipset)
         else:
             stateful_rule_group_references = None
         # create a lambda to deal with NetFW Endpoint routes
@@ -483,9 +501,9 @@ class internetfw(core.Stack):
                 route_table_id=self.incomingrt.ref
             )
 
-        endpointlist = self.netfirewall.attr_endpoint_ids
+        endpointlist = self.vpc.select_subnets(subnet_group_name=ressubgrp).subnet_ids
         index = 0
-        while index <= (len(endpointlist)+1):
+        while index <= (len(endpointlist)):
             fwendpoint_az = core.Fn.select(0, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             fwendpoint_id = core.Fn.select(1, core.Fn.split(":", core.Fn.select(index, self.netfirewall.attr_endpoint_ids)))
             core.CfnOutput(

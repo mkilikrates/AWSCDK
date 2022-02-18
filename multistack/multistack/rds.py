@@ -112,31 +112,51 @@ class myrds(core.Stack):
                 rescl = rds.DatabaseClusterEngine.AURORA_POSTGRESQL
             if resmap['Mappings']['Resources'][res]['Cluster'] == "AURORA_MYSQL":
                 rescl = rds.DatabaseClusterEngine.AURORA_MYSQL
-            # create RDS Cluster
-            self.rds = rds.DatabaseCluster(
-                self,
-                f"{construct_id}:MyRdsCluster",
-                engine=rescl,
-                instance_props=rds.InstanceProps(
+            if 'Type' in resmap['Mappings']['Resources'][res]:
+                clustertype = resmap['Mappings']['Resources'][res]['Type']
+            else:
+                clustertype = 'Cluster'
+            if  clustertype == "Serverless":
+                # create RDS Cluster
+                self.rds = rds.ServerlessCluster(
+                    self,
+                    f"{construct_id}:MyRdsServlessCluster",
+                    cluster_identifier=f"{construct_id}MyRdsServlessCluster",
+                    engine=rescl,
                     vpc=self.vpc,
-                    allow_major_version_upgrade=True,
-                    auto_minor_version_upgrade=True,
-                    delete_automated_backups=True,
-                    instance_type=ec2.InstanceType.of(
-                        instance_class=ec2.InstanceClass(resclass),
-                        instance_size=ec2.InstanceSize(ressize)
-                    ),
                     vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
                     security_groups=[self.rdssg],
-                    publicly_accessible=resintn
-                ),
-                credentials=rds.Credentials.from_generated_secret(resusr),
-                deletion_protection=False,
-                instance_identifier_base=resname,
-                removal_policy=core.RemovalPolicy(respol),
-                cloudwatch_logs_exports=reslog,
-                cloudwatch_logs_retention=log.RetentionDays.ONE_WEEK,
-            )
+                    credentials=rds.Credentials.from_generated_secret(resusr),
+                    deletion_protection=False,
+                    enable_data_api=False,
+                    backup_retention=core.Duration.days(1),
+                )
+            else:
+                # create RDS Cluster
+                self.rds = rds.DatabaseCluster(
+                    self,
+                    f"{construct_id}:MyRdsCluster",
+                    engine=rescl,
+                    instance_props=rds.InstanceProps(
+                        vpc=self.vpc,
+                        allow_major_version_upgrade=True,
+                        auto_minor_version_upgrade=True,
+                        delete_automated_backups=True,
+                        instance_type=ec2.InstanceType.of(
+                            instance_class=ec2.InstanceClass(resclass),
+                            instance_size=ec2.InstanceSize(ressize)
+                        ),
+                        vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                        security_groups=[self.rdssg],
+                        publicly_accessible=resintn
+                    ),
+                    credentials=rds.Credentials.from_generated_secret(resusr),
+                    deletion_protection=False,
+                    instance_identifier_base=resname,
+                    removal_policy=core.RemovalPolicy(respol),
+                    cloudwatch_logs_exports=reslog,
+                    cloudwatch_logs_retention=log.RetentionDays.ONE_WEEK,
+                )
             core.CfnOutput(
                 self,
                 f"{construct_id}:rds-endpoint",
