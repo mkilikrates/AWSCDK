@@ -52,13 +52,22 @@ class alb(core.Stack):
                 private_zone=False
             )
             # generate public certificate
-            if reslbport == 443:
+            if type(reslbport) == str and reslbport == 443:
                 self.cert = acm.Certificate(
                     self,
                     f"{construct_id}:Certificate",
                     domain_name=f"{appname}.{appdomain}",
                     validation=acm.CertificateValidation.from_dns(self.hz)
                 )
+            if type(reslbport) == list:
+                for each in reslbport:
+                    if each == 443:
+                        self.cert = acm.Certificate(
+                            self,
+                            f"{construct_id}:Certificate",
+                            domain_name=f"{appname}.{appdomain}",
+                            validation=acm.CertificateValidation.from_dns(self.hz)
+                        )
         else:
             appdomain = ''
         if elbface == True:
@@ -238,36 +247,87 @@ class alb(core.Stack):
             # allow egress access to target
             if tgrt != '':
                 # configure listener
-                if reslbport == 443:
-                    self.elblistnrs = self.elb.add_listener(
-                        f"{construct_id}:Listener_https",
-                        port=reslbport,
-                        protocol=elb.Protocol('TLS'),
-                        certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
-                    )
-                else:
-                    if 'PROTO' in resmap['Mappings']['Resources'][res]:
-                        proto = resmap['Mappings']['Resources'][res]['PROTO']
-                        if proto == 'TCP':
-                            protocol = elb.Protocol('TCP')
-                        elif proto == 'UDP':
-                            protocol = elb.Protocol('UDP')
+                if type(reslbport) == str:
+                    if reslbport == 443:
+                        self.elblistnrs = self.elb.add_listener(
+                            f"{construct_id}:Listener_https",
+                            port=reslbport,
+                            protocol=elb.Protocol('TLS'),
+                            certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
+                        )
                     else:
-                        protocol = elb.Protocol('TCP')
-                    self.elblistnrs = self.elb.add_listener(
-                        f"{construct_id}:Listener",
-                        port=reslbport,
-                        protocol=protocol,
+                        if 'PROTO' in resmap['Mappings']['Resources'][res]:
+                            proto = resmap['Mappings']['Resources'][res]['PROTO']
+                            if proto == 'TCP':
+                                protocol = elb.Protocol('TCP')
+                            elif proto == 'UDP':
+                                protocol = elb.Protocol('UDP')
+                        else:
+                            protocol = elb.Protocol('TCP')
+                        self.elblistnrs = self.elb.add_listener(
+                            f"{construct_id}:Listener",
+                            port=reslbport,
+                            protocol=protocol,
+                        )
+                    self.tgrp = self.elblistnrs.add_targets(
+                        f"{construct_id}:My Default Fleet",
+                        port=restgport,
+                        targets=[tgrt]
                     )
-                self.tgrp = self.elblistnrs.add_targets(
-                    f"{construct_id}:My Default Fleet",
-                    port=restgport,
-                    targets=[tgrt]
-                )
+
+                if type(reslbport) == list:
+                    index = 0
+                    while index < (len(reslbport)):
+                        if reslbport[index] == 443:
+                            elb.NetworkListener(
+                                self,
+                                f"{construct_id}:Listener_https",
+                                load_balancer=self.elb,
+                                port=reslbport[index],
+                                protocol=elb.Protocol('TLS'),
+                                certificates=[elb.ListenerCertificate(self.cert.certificate_arn)],
+                                default_target_groups=elb.NetworkTargetGroup(
+                                    self,
+                                    f"{construct_id}:My Default Fleet{index}",
+                                    port=restgport[index],
+                                    targets=[tgrt],
+                                    vpc=self.vpc
+                                )
+                            )
+                        else:
+                            if 'PROTO' in resmap['Mappings']['Resources'][res]:
+                                proto = resmap['Mappings']['Resources'][res]['PROTO']
+                                if proto == 'TCP':
+                                    protocol = elb.Protocol('TCP')
+                                elif proto == 'UDP':
+                                    protocol = elb.Protocol('UDP')
+                            else:
+                                protocol = elb.Protocol('TCP')
+                            elb.NetworkListener(
+                                self,
+                                f"{construct_id}:Listener{index}",
+                                load_balancer=self.elb,
+                                port=reslbport[index],
+                                protocol=protocol,
+                                certificates=None,
+                                default_action=None,
+                                ssl_policy=None,
+                                alpn_policy=None,
+                                default_target_groups=[elb.NetworkTargetGroup(
+                                    self,
+                                    f"{construct_id}:My Default Fleet{index}",
+                                    port=restgport[index],
+                                    preserve_client_ip=lbpresip,
+                                    protocol=protocol,
+                                    targets=[tgrt],
+                                    vpc=self.vpc
+                                )]
+                            )
+                        index = index + 1
                 if 'HC' in resmap['Mappings']['Resources'][res]:
                     hc = resmap['Mappings']['Resources'][res]['HC']
                 else:
-                    hc = True
+                    hc = False
                 if 'HCPORT' in resmap['Mappings']['Resources'][res]:
                     hcport = resmap['Mappings']['Resources'][res]['HCPORT']
                 else:

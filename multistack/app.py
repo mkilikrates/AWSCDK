@@ -40,14 +40,24 @@ account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
 myenv = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"]))
 myenv2 = core.Environment(account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]), region = remoteregion)
 route = 'bgp'
-gwtype = 'vgw'
+gwtype = 'tgw'
 ipstack = 'Ipv4'
 app = core.App()
 
 
 # env 1
 VPCStack = VPC(app, "MYVPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 1, ipstack = ipstack)
-InstanceStack2 = instance(app, "My-windows", env=myenv, res = 'win2022', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+InstanceStack = instance(app, "Host", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+InstanceStack.add_dependency(target=VPCStack)
+ASGStack = asg(app, "MY-ASG", env=myenv, res = 'simpletshootpriv', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', stackusrdata = '', snstopic = '', vpc = VPCStack.vpc)
+ASGStack.add_dependency(target=VPCStack)
+ELBStack = alb(app, "MY-ELB", env=myenv, res = 'nlbbenfs', preflst = False, tgrtip = '', allowsg = '', allowall = True, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
+
+VPCStack2 = VPC(app, "MYVPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 1, maxaz = 1, ipstack = ipstack)
+VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = '', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpcsrvpolice = '', vpcsrvtype = 'Interface', vpcsrvsubgrp = 'Endpoints', vpcsrvname = ELBStack.vpcendpointsrv.vpc_endpoint_service_name, vpcsrvprivdomain = '', vpcsrvport ='', vpc = VPCStack2.vpc, vpcstack = VPCStack2.stack_name)
+VpcEndpointsStack.add_dependency(ELBStack)
+InstanceStack2 = instance(app, "Host2", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
+InstanceStack2.add_dependency(target=VPCStack2)
 
 #ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = '', vpc = VPCStack.vpc)
 #RDSStack = rds(app, "DB", env=myenv, res = 'rdsauroramysqlsservlesscl', preflst = True, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = ECStack.ecssg)
