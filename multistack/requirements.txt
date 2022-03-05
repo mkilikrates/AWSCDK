@@ -27,6 +27,10 @@ aws_cdk.aws_s3_assets
 aws_cdk.aws_cloudfront
 aws_cdk.aws_servicediscovery
 aws_cdk.aws_sns
+aws_cdk.aws_elasticache
+aws_cdk.aws_opensearchservice
+aws_cdk.aws_kinesis
+aws_cdk.aws_efs
 cdk_ec2_key_pair
 PyYAML
 constructs

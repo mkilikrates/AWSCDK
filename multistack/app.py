@@ -20,6 +20,9 @@ from multistack.r53res import rslv
 from multistack.eks import EksStack as eks
 from multistack.ecs import EcsStack as ecs
 from multistack.sns import main as sns
+from multistack.elasticache import main as ecache
+from multistack.opensearch import main as search
+from multistack.efs import main as efs
 from multistack.eksapp import (
     MyAppStack as eksapp,
     AppStack as simpleapp
@@ -46,22 +49,14 @@ app = core.App()
 
 
 # env 1
-VPCStack = VPC(app, "MYVPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 1, maxaz = 1, ipstack = ipstack)
-InstanceStack = instance(app, "Host", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
-InstanceStack.add_dependency(target=VPCStack)
-ASGStack = asg(app, "MY-ASG", env=myenv, res = 'simpletshootpriv', preflst = False, allowall = True, ipstack = ipstack, allowsg = '', stackusrdata = '', snstopic = '', vpc = VPCStack.vpc)
-ASGStack.add_dependency(target=VPCStack)
-ELBStack = alb(app, "MY-ELB", env=myenv, res = 'nlbbenfs', preflst = False, tgrtip = '', allowsg = '', allowall = True, ipstack = ipstack, tgrt = ASGStack.asg, vpc = VPCStack.vpc)
-
-VPCStack2 = VPC(app, "MYVPC2", env=myenv, res = 'vpc', cidrid = 1, natgw = 1, maxaz = 1, ipstack = ipstack)
-VpcEndpointsStack = vpce(app, "MY-VPCENDPOINTS", env=myenv, res = '', preflst = False, allowsg = '', allowall = '', ipstack = ipstack, vpcsrvpolice = '', vpcsrvtype = 'Interface', vpcsrvsubgrp = 'Endpoints', vpcsrvname = ELBStack.vpcendpointsrv.vpc_endpoint_service_name, vpcsrvprivdomain = '', vpcsrvport ='', vpc = VPCStack2.vpc, vpcstack = VPCStack2.stack_name)
-VpcEndpointsStack.add_dependency(ELBStack)
-InstanceStack2 = instance(app, "Host2", env=myenv, res = 'bastionsimplepub', preflst = True, allowsg = '', instpol = '', userdata = '', eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack2.vpc, ds = '')
-InstanceStack2.add_dependency(target=VPCStack2)
-
+VPCStack = VPC(app, "MYVPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 #ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'ecsbe', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, srvdisc = '', vpc = VPCStack.vpc)
 #RDSStack = rds(app, "DB", env=myenv, res = 'rdsauroramysqlsservlesscl', preflst = True, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = ECStack.ecssg)
 #RDSStack.add_dependency(target=VPCStack)
+ECacheStack = ecache(app, "wpmemcache", env=myenv, res = 'memcachet3micromultiaz', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
+ECacheStack.add_dependency(target=VPCStack)
+OSearchStack = search(app, "wpsearchdomain", env=myenv, res = 'opensearch', preflst = False, allowsg = '', allowall = True, maxaz = 3, ipstack = ipstack, vpc = VPCStack.vpc)
+EFSStack = search(app, "wpefs", env=myenv, res = 'wpefs', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
 
 # stack list
 #EIPStack = eip(app, "MY-EIP", env=myenv, allocregion = remoteregion)
