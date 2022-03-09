@@ -100,7 +100,7 @@ class main(core.Stack):
         self.domain_servicelinkrole = iam.CfnServiceLinkedRole(
             self,
             f"{construct_id}ServiceLinkRole",
-            aws_service_name='es.amazonaws.com'
+            aws_service_name='opensearchservice.amazonaws.com',
         )
         if 'NAME' in resmap['Mappings']['Resources'][res]:
             resname = resmap['Mappings']['Resources'][res]['NAME']
@@ -243,6 +243,7 @@ class main(core.Stack):
             enforce_https=True,
             node_to_node_encryption=True
         )
+        self.domain.node.add_dependency(self.domain_servicelinkrole)
         core.CfnOutput(
             self,
             f"{construct_id}DomainName",

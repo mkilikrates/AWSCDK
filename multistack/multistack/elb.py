@@ -52,7 +52,7 @@ class alb(core.Stack):
                 private_zone=False
             )
             # generate public certificate
-            if type(reslbport) == str and reslbport == 443:
+            if type(reslbport) == int and reslbport == 443:
                 self.cert = acm.Certificate(
                     self,
                     f"{construct_id}:Certificate",
@@ -85,23 +85,24 @@ class alb(core.Stack):
                 allow_all_outbound=True,
                 vpc=self.vpc
             )
+            # configure listener
+            self.elblistnrs = clb.LoadBalancerListener(
+                external_port=reslbport,
+                internal_port=restgport
+            )
             self.elb = clb.LoadBalancer(
                 self,
                 f"{construct_id}-CLB",
                 vpc=self.vpc,
                 cross_zone=rescrossaz,
                 subnet_selection=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                internet_facing=elbface
+                internet_facing=elbface,
+                listeners=self.elblistnrs
             )
             core.CfnOutput(
                 self,
                 f"{construct_id}:ALB DNS",
                 value=self.elb.load_balancer_dns_name
-            )
-            # configure listener
-            self.elblistnrs = self.elb.add_listener(
-                external_port=reslbport,
-                internal_port=restgport
             )
             # need to fix this part
             # self.tgrp = self.elb.add_target(
@@ -140,7 +141,7 @@ class alb(core.Stack):
                 internet_facing=elbface,
                 ip_address_type=(lbstack),
                 vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
-                security_group=self.lbsg
+                security_group=self.lbsg,
             )
             core.CfnOutput(
                 self,
@@ -149,11 +150,13 @@ class alb(core.Stack):
             )
             # configure listener
             if reslbport == 443:
-                self.elblistnrs = self.elb.add_listener(
+                self.elblistnrs = elb.ApplicationListener(
+                    self,
                     f"{construct_id}:Listener_https",
+                    load_balancer=self.elb,
                     port=reslbport,
                     protocol=elb.ApplicationProtocol.HTTPS,
-                    certificate_arns=[self.cert.certificate_arn]
+                    certificates=[elb.ListenerCertificate.from_arn(self.cert.certificate_arn)],
                 )
                 #redir http traffic to https
                 self.elb.add_redirect(
@@ -163,8 +166,9 @@ class alb(core.Stack):
                     target_protocol=elb.ApplicationProtocol.HTTPS
                 )
             else:
-                self.elblistnrs = self.elb.add_listener(
+                self.elblistnrs = elb.ApplicationListener(
                     f"{construct_id}:Listener_http",
+                    load_balancer=self.elb,
                     port=reslbport,
                     protocol=elb.ApplicationProtocol.HTTP
                 )
@@ -249,8 +253,9 @@ class alb(core.Stack):
                 # configure listener
                 if type(reslbport) == str:
                     if reslbport == 443:
-                        self.elblistnrs = self.elb.add_listener(
+                        self.elblistnrs = elb.NetworkListener(
                             f"{construct_id}:Listener_https",
+                            load_balancer=self.elb,
                             port=reslbport,
                             protocol=elb.Protocol('TLS'),
                             certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
@@ -264,8 +269,9 @@ class alb(core.Stack):
                                 protocol = elb.Protocol('UDP')
                         else:
                             protocol = elb.Protocol('TCP')
-                        self.elblistnrs = self.elb.add_listener(
+                        self.elblistnrs = elb.NetworkListener(
                             f"{construct_id}:Listener",
+                            load_balancer=self.elb,
                             port=reslbport,
                             protocol=protocol,
                         )
@@ -404,10 +410,12 @@ class alb(core.Stack):
                     self.tgrp.add_target(lbtargets.IpTarget(ip_address=tgip,availability_zone="all"))
                 # configure listener
                 if reslbport == 443:
-                    self.elblistnrs = self.elb.add_listener(
+                    self.elblistnrs = elb.NetworkListener(
+                        self,
                         f"{construct_id}:Listener_https",
+                        load_balancer=self.elb,
                         port=reslbport,
-                        protocol=elb.Protocol('TLS'),
+                        protocol=elb.Protocol.TLS,
                         certificates=[elb.ListenerCertificate(self.cert.certificate_arn)],
                         default_target_groups=[self.tgrp]
                     )
@@ -420,8 +428,9 @@ class alb(core.Stack):
                             protocol = elb.Protocol('UDP')
                     else:
                         protocol = elb.Protocol('TCP')
-                    self.elblistnrs = self.elb.add_listener(
+                    self.elblistnrs = elb.NetworkListener(
                         f"{construct_id}:Listener",
+                        load_balancer=self.elb,
                         port=reslbport,
                         protocol=protocol,
                         default_target_groups=[self.tgrp]

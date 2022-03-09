@@ -104,9 +104,9 @@ class main(core.Stack):
         else:
             appdomain = None
         if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
-            ressubgrp = [ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True)]
+            ressubgrp = ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True)
         else:
-            ressubgrp = [ec2.SubnetSelection(subnet_group_name='Endpoints',one_per_az=True)]
+            ressubgrp = ec2.SubnetSelection(subnet_group_name='Endpoints',one_per_az=True)
         if 'CRYPT' in resmap['Mappings']['Resources'][res]:
             resencrypt = True
             resencrest = resmap['Mappings']['Resources'][res]['CRYPT']

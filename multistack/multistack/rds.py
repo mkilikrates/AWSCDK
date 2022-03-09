@@ -6,6 +6,7 @@ from aws_cdk import (
     aws_rds as rds,
     aws_ssm as ssm,
     aws_logs as log,
+    aws_route53 as r53,
     core,
 )
 account = core.Aws.ACCOUNT_ID
@@ -41,7 +42,13 @@ class myrds(core.Stack):
                 ec2.Peer.prefix_list(srcprefix),
                 ec2.Port.all_traffic()
             )
-        if allowsg != '':
+        if type(allowsg) == list:
+            for each in allowsg:
+                self.rdssg.add_ingress_rule(
+                    each,
+                    ec2.Port.all_traffic()
+                )
+        elif allowsg != '':
             self.rdssg.add_ingress_rule(
                 allowsg,
                 ec2.Port.all_traffic()
@@ -70,6 +77,17 @@ class myrds(core.Stack):
                     ec2.Peer.any_ipv6(),
                     ec2.Port.tcp(allowall)
                 )
+        if type(allowall) == list:
+            for each in allowall:
+                self.rdssg.add_ingress_rule(
+                    ec2.Peer.any_ipv4(),
+                    ec2.Port.tcp(each)
+                )
+                if self.ipstack == 'Ipv6':
+                    self.rdssg.add_ingress_rule(
+                        ec2.Peer.any_ipv6(),
+                        ec2.Port.tcp(each)
+                    )
 
         # get data for rds resource
         res = res
@@ -80,6 +98,17 @@ class myrds(core.Stack):
         respol = resmap['Mappings']['Resources'][res]['RemovalPolicy']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         resintn = resmap['Mappings']['Resources'][res]['Internet']
+        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+            appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+            # get hosted zone id
+            self.hz = r53.HostedZone.from_lookup(
+                self,
+                f"{construct_id}:Domain",
+                domain_name=appdomain,
+                private_zone=True
+            )
+        else:
+            appdomain = None
         if resmap['Mappings']['Resources'][res]['ENGINE'] == "MYSQL":
             reseng = rds.DatabaseInstanceEngine.MYSQL
             reslog = [
@@ -114,7 +143,6 @@ class myrds(core.Stack):
                 rescl = rds.DatabaseClusterEngine.AURORA_MYSQL
             if 'Type' in resmap['Mappings']['Resources'][res]:
                 clustertype = resmap['Mappings']['Resources'][res]['Type']
-            else:
                 clustertype = 'Cluster'
             if  clustertype == "Serverless":
                 # create RDS Cluster
@@ -131,6 +159,20 @@ class myrds(core.Stack):
                     enable_data_api=False,
                     backup_retention=core.Duration.days(1),
                 )
+                if appdomain != None and resname != None:
+                    self.rdsclusterfqdn = r53.CnameRecord(
+                        self,
+                        f"{construct_id}FQDN",
+                        zone=self.hz,
+                        record_name=f"{resname}.{appdomain}",
+                        domain_name=self.rds.cluster_endpoint.hostname,
+                        ttl=core.Duration.minutes(60),
+                    )
+                    core.CfnOutput(
+                        self,
+                        f"{construct_id}ClusterFQDN",
+                        value=f"{resname}.{appdomain}"
+                    )
             else:
                 # create RDS Cluster
                 self.rds = rds.DatabaseCluster(
@@ -157,6 +199,15 @@ class myrds(core.Stack):
                     cloudwatch_logs_exports=reslog,
                     cloudwatch_logs_retention=log.RetentionDays.ONE_WEEK,
                 )
+                if appdomain != None and resname != None:
+                    self.rdsclusterfqdn = r53.CnameRecord(
+                        self,
+                        f"{construct_id}FQDN",
+                        zone=self.hz,
+                        record_name=f"{resname}.{appdomain}",
+                        domain_name=self.rds.cluster_endpoint.hostname,
+                        ttl=core.Duration.minutes(60),
+                    )
             core.CfnOutput(
                 self,
                 f"{construct_id}:rds-endpoint",
@@ -199,3 +250,17 @@ class myrds(core.Stack):
                 value=f"{self.rds.db_instance_endpoint_address}:{self.rds.db_instance_endpoint_port}",
                 export_name=f"{construct_id}:rds-endpoint"
             )
+            if appdomain != None and resname != None:
+                self.rdsclusterfqdn = r53.ARecord(
+                    self,
+                    id=f"{construct_id}FQDN",
+                    target=self.rds.db_instance_endpoint_address,
+                    zone=self.hz,
+                    record_name=f"{resname}.{appdomain}",
+                    ttl=core.Duration.minutes(60)
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}ClusterFQDN",
+                    value=f"{resname}.{appdomain}"
+                )

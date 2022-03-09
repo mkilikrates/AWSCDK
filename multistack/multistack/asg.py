@@ -20,6 +20,7 @@ import os
 import json
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_ecs as ecs,
     aws_iam as iam,
     aws_autoscaling as asg,
     aws_cloudwatch as cw,
@@ -233,6 +234,15 @@ class main(core.Stack):
                         "Start-Process $Installer -Wait -ArgumentList $arguments;"
                         "Remove-Item $Path\$Package"
                     )
+                elif imagekind == 'Bottlerocket':
+                    machineimage = ecs.BottleRocketImage(architecture=ecs.AmiHardwareType.STANDARD)
+                    image = 'Bottlerocket'
+                elif imagekind == 'BottlerocketARM':
+                    machineimage = ecs.BottleRocketImage(architecture=ecs.AmiHardwareType.ARM)
+                    image = 'Bottlerocket'
+                elif imagekind == 'ECSAWSL2':
+                    machineimage = ecs.EcsOptimizedImage.amazon_linux2()
+                    image = 'Linux'
                 else:
                     machineimage = ec2.AmazonLinuxImage(
                         edition=ec2.AmazonLinuxEdition.STANDARD,

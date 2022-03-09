@@ -221,12 +221,13 @@ class main(core.Stack):
             engine=engine,
             az_mode=azmode,
             num_cache_nodes=desircap,
-            cache_subnet_group_name=cachesubnetgroup.cache_subnet_group_name,
+            auto_minor_version_upgrade=True,
             vpc_security_group_ids=[self.elasticachesg.security_group_id],
+            cache_subnet_group_name=cachesubnetgroup.ref,
             cluster_name=resname,
             log_delivery_configurations=elasticachelogconfig,
-            auto_minor_version_upgrade=True
         )
+        self.cache_cluster.add_depends_on(target=cachesubnetgroup)
         core.CfnOutput(
             self,
             f"{construct_id}ClusterName",

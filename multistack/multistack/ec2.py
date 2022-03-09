@@ -91,6 +91,18 @@ class InstanceStack(core.Stack):
                     ec2.Peer.any_ipv6(),
                     ec2.Port.tcp(allowall)
                 )
+        if type(allowall) == list:
+            for each in allowall:
+                self.ec2sg.add_ingress_rule(
+                    ec2.Peer.any_ipv4(),
+                    ec2.Port.tcp(each)
+                )
+                if self.ipstack == 'Ipv6':
+                    self.ec2sg.add_ingress_rule(
+                        ec2.Peer.any_ipv6(),
+                        ec2.Port.tcp(each)
+                    )
+
         # create a key to use from this ec2
         if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
             keyname = resmap['Mappings']['Resources'][res]['CREATEKEY']

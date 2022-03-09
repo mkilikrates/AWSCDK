@@ -106,6 +106,11 @@ class ServiceDiscovery(core.Stack):
                 load_balancer=loadbalancer,
                 custom_health_check=chc
             )
+            core.CfnOutput(
+                self,
+                f"{construct_id}ServiceName",
+                value=self.servicename.namespace.namespace_name
+            )
         if elb != '':
             self.servicename.register_load_balancer(
                 f"{construct_id}ServiceNameLB",
