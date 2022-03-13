@@ -49,7 +49,7 @@ app = core.App()
 
 
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = 'vpc', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+VPCStack = VPC(app, "VPC", env=myenv, res = '', vpcid = 'vpc-0f1fa846a0c919a54', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
 ECacheStack = ecache(app, "wpmemcache", env=myenv, res = 'memcachet3micromultiaz', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
 ECacheStack.add_dependency(target=VPCStack)
 OSearchStack = search(app, "wpsearchdomain", env=myenv, res = 'opensearch', preflst = False, allowsg = '', allowall = True, maxaz = 3, ipstack = ipstack, vpc = VPCStack.vpc)

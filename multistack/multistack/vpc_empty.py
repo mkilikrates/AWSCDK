@@ -77,21 +77,29 @@ import os
 import json
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_ram as ram,
     core,
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
 
 class VPC(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, ipstack, cidrid, natgw, maxaz, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, vpcid, ipstack, cidrid, natgw, maxaz, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         if res == '':
-            self.vpc = ec2.Vpc.from_lookup(
-                self,
-                'DEFAULT-VPC',
-                is_default=True
-            )
+            if vpcid != '':
+                self.vpc = ec2.Vpc.from_lookup(
+                    self,
+                    id=f"{construct_id}",
+                    vpc_id=vpcid
+                )
+            else:
+                self.vpc = ec2.Vpc.from_lookup(
+                    self,
+                    'DEFAULT-VPC',
+                    is_default=True
+                )
         else:
             self.cidrid = int(cidrid)
             self.natgw = int(natgw)
@@ -154,6 +162,38 @@ class VPC(core.Stack):
                 nat_gateways=self.natgw,
                 subnet_configuration=self.sub
             )
+            self.v4 = core.CfnOutput(
+                self,
+                f"{self.stack_name}:Ipv4Cidr",
+                value=self.vpc.vpc_cidr_block,
+                export_name=f"{self.stack_name}:Ipv4Cidr"
+            )
+            # share ram
+            if 'Principals' in resmap['Mappings']['Resources'][res]:
+                resprinc = resmap['Mappings']['Resources'][res]['Principals']
+                arnlist = []
+                if 'EXTERN' in resmap['Mappings']['Resources'][res]:
+                    resallowext = resmap['Mappings']['Resources'][res]['EXTERN']
+                else:
+                    resallowext = False
+                if 'subshare' in resmap['Mappings']['Resources'][res]:
+                    for subgroup in resmap['Mappings']['Resources'][res]['subshare']:
+                        subgrouplst = []
+                        subgrouplst.append(self.vpc.select_subnets(subnet_group_name=subgroup).subnet_ids)
+                        for each in subgrouplst:
+                            arnlist.append(f"arn:{core.Aws.PARTITION}:ec2:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:subnet/{each}")
+                else:
+                    subgrouplst = self.vpc.select_subnets().subnet_ids
+                    for each in subgrouplst:
+                        arnlist.append(f"arn:{core.Aws.PARTITION}:ec2:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:subnet/{each}")
+                self.ram = ram.CfnResourceShare(
+                    self,
+                    f"{construct_id}-ram",
+                    name=resname,
+                    allow_external_principals=resallowext,
+                    principals=resprinc,
+                    resource_arns=arnlist
+                )
             if 'MULTICIDR' in resmap['Mappings']['Resources'][res]:
                 cidrs = resmap['Mappings']['Resources'][res]['MULTICIDR']
                 if type(cidrs) == list:
@@ -270,11 +310,6 @@ class VPC(core.Stack):
                     # value= core.Token.as_string(self.vpc.vpc_ipv6_cidr_blocks),
                     export_name=f"{self.stack_name}:Ipv6Cidr"
                 )
-        self.v4 = core.CfnOutput(
-            self,
-            f"{self.stack_name}:Ipv4Cidr",
-            value=self.vpc.vpc_cidr_block,
-            export_name=f"{self.stack_name}:Ipv4Cidr"
-        )
+
             
 

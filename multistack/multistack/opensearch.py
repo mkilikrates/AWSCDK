@@ -244,6 +244,7 @@ class main(core.Stack):
             node_to_node_encryption=True
         )
         self.domain.node.add_dependency(self.domain_servicelinkrole)
+        self.domain.node.add_dependency(self.opensearchsg)
         core.CfnOutput(
             self,
             f"{construct_id}DomainName",
