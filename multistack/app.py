@@ -49,22 +49,19 @@ app = core.App()
 
 
 # env 1
-VPCStack = VPC(app, "VPC", env=myenv, res = '', vpcid = 'vpc-0f1fa846a0c919a54', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
-ECacheStack = ecache(app, "wpmemcache", env=myenv, res = 'memcachet3micromultiaz', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
-ECacheStack.add_dependency(target=VPCStack)
-OSearchStack = search(app, "wpsearchdomain", env=myenv, res = 'opensearch', preflst = False, allowsg = '', allowall = True, maxaz = 3, ipstack = ipstack, vpc = VPCStack.vpc)
-OSearchStack.add_dependency(target=VPCStack)
-EFSStack = efs(app, "wpefs", env=myenv, res = 'wpefs', preflst = False, allowsg = '', allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
+VPCStack = VPC(app, "VPC", env=myenv, res = 'wpvpc', vpcid = '', cidrid = 0, natgw = 3, maxaz = 3, ipstack = ipstack)
+EFSStack = efs(app, "EFS", env=myenv, res = 'wpefs', preflst = False, allowsg = '', domain = VPCStack.hz, allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
 EFSStack.add_dependency(target=VPCStack)
-usrdata = (
-    "mkdir -p /mnt/efs",
-    f"mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport {EFSStack.efsfqdn}:/ /mnt/efs"
-)
-InstanceStack = instance(app, "My-linux", env=myenv, res = 'bastion', preflst = True, allowsg = '', instpol = '', userdata = usrdata, eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
+usrdata = f"mkdir -p /mnt/efs; mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport {EFSStack.efsfqdn.domain_name}:/ /mnt/efs"
+InstanceStack = instance(app, "My-linux", env=myenv, res = 'bastion', preflst = True, allowsg = '', grantsg = [EFSStack.efssg.security_group_id], instpol = '', userdata = usrdata, eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
 InstanceStack.add_dependency(target=EFSStack)
-RDSStack = rds(app, "DB", env=myenv, res = 'rdsauroramysqlsservlesscl', preflst = False, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = [InstanceStack.ec2sg])
+ECacheStack = ecache(app, "wpmemcache", env=myenv, res = 'memcachet3micromultiaz', preflst = False, domain = VPCStack.hz, allowsg = [InstanceStack.ec2sg], allowall = False, ipstack = ipstack, vpc = VPCStack.vpc)
+ECacheStack.add_dependency(target=VPCStack)
+OSearchStack = search(app, "wpsearchdomain", env=myenv, res = 'opensearch', preflst = False, domain = VPCStack.hz, allowsg = [InstanceStack.ec2sg], allowall = False, maxaz = 3, ipstack = ipstack, vpc = VPCStack.vpc)
+OSearchStack.add_dependency(target=VPCStack)
+RDSStack = rds(app, "DB", env=myenv, res = 'wprdsauroramysqlsservlesscl', preflst = False, domain = VPCStack.hz, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = [InstanceStack.ec2sg])
 RDSStack.add_dependency(target=VPCStack)
-ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'wpecsfar', preflst = False, allowsg = [InstanceStack.ec2sg], contenv = '', contsecr = '', allowall = True, grantsg = [RDSStack.rdssg], ipstack = ipstack, srvdisc = '', asg = '', volume = EFSStack.filesystem.file_system_id, volaccesspoint = EFSStack.filesystemaccesspoint.access_point_id, vpc = VPCStack.vpc)
+ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'wpecsfar', preflst = False, allowsg = [InstanceStack.ec2sg], contenv = '', contsecr = '', allowall = True, grantsg = [RDSStack.rdssg.security_group_id, EFSStack.efssg.security_group_id, ECacheStack.elasticachesg.security_group_id, OSearchStack.opensearchsg.security_group_id], ipstack = ipstack, srvdisc = '', asg = '', volume = [EFSStack.filesystem.file_system_id], volaccesspoint = [EFSStack.filesystemaccesspoint.access_point_id], vpc = VPCStack.vpc)
 ECStack.add_dependency(target=EFSStack)
 #ELBStack = alb(app, "WORDPRESS-ELB", env=myenv, res = 'wpfe', preflst = False, tgrtip = '', allowsg = '', allowall = True, ipstack = ipstack, tgrt = ECStack.srvc[1], vpc = VPCStack.vpc)
 

@@ -16,7 +16,7 @@ from aws_cdk import (
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 class main(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, domain, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -59,7 +59,13 @@ class main(core.Stack):
                 group_id=self.elasticachesg.security_group_id
             )
         # add ingress rule
-        if allowsg != '':
+        if type(allowsg) == list:
+            for each in allowsg:
+                self.elasticachesg.add_ingress_rule(
+                    each,
+                    ec2.Port.all_traffic()
+                )
+        elif allowsg != '':
             self.elasticachesg.add_ingress_rule(
                 allowsg,
                 ec2.Port.all_traffic()
@@ -94,7 +100,10 @@ class main(core.Stack):
             resname = resmap['Mappings']['Resources'][res]['NAME']
         else:
             resname = None
-        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+        if domain != '':
+            self.hz = domain
+            appdomain = domain.zone_name
+        elif 'DOMAIN' in resmap['Mappings']['Resources'][res]:
             appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
             # get hosted zone id
             self.hz = r53.HostedZone.from_lookup(
@@ -214,6 +223,7 @@ class main(core.Stack):
             description=f"{construct_id}SubnetGrp",
             subnet_ids=self.vpc.select_subnets(subnet_group_name=ressubgrp,one_per_az=True).subnet_ids,
         )
+        cachesubnetgroup.node.add_dependency(self.elasticachesg)
         self.cache_cluster = elasticache.CfnCacheCluster(
             self,
             f"{construct_id}",

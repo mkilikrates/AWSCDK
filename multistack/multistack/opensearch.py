@@ -13,7 +13,7 @@ from aws_cdk import (
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 class main(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, maxaz = int, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, domain, allowall, ipstack, maxaz = int, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         res = res
@@ -57,7 +57,13 @@ class main(core.Stack):
                     group_id=self.opensearchsg.security_group_id
                 )
             # add ingress rule
-            if allowsg != '':
+            if type(allowsg) == list:
+                for each in allowsg:
+                    self.opensearchsg.add_ingress_rule(
+                        each,
+                        ec2.Port.all_traffic()
+                    )
+            elif allowsg != '':
                 self.opensearchsg.add_ingress_rule(
                     allowsg,
                     ec2.Port.all_traffic()
@@ -106,7 +112,10 @@ class main(core.Stack):
             resname = resmap['Mappings']['Resources'][res]['NAME']
         else:
             resname = res
-        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+        if domain != '':
+            self.hz = domain
+            appdomain = domain.zone_name
+        elif 'DOMAIN' in resmap['Mappings']['Resources'][res]:
             appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
             # get hosted zone id
             self.hz = r53.HostedZone.from_lookup(

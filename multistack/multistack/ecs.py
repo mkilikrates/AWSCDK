@@ -24,7 +24,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EcsStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, contenv, contsecr, srvdisc = sd, asg = asg, grantsg = ec2.SecurityGroup, volume = efs.FileSystem, volaccesspoint = efs.AccessPoint, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, contenv, contsecr, volume, volaccesspoint, grantsg, srvdisc = sd, asg = asg, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # from https://github.com/aws-samples/aws-cdk-examples/blob/master/python/ecs/ecs-service-with-advanced-alb-config/app.py
         # get imported objects
@@ -119,16 +119,26 @@ class EcsStack(core.Stack):
                         ec2.Port.tcp(each)
                     )
         if type(grantsg) == list:
+            index = 0
             for each in grantsg:
-                each.add_ingress_rule(
+                ec2.SecurityGroup.from_security_group_id(
+                    self,
+                    f"{construct_id}{index}",
+                    security_group_id=each, mutable=True
+                    ).add_ingress_rule(
+                        self.ecssg,
+                        ec2.Port.all_traffic()
+                    )
+                index = index + 1
+        elif grantsg != '':
+            ec2.SecurityGroup.from_security_group_id(
+                self,
+                f"{construct_id}0",
+                security_group_id=grantsg, mutable=True
+                ).add_ingress_rule(
                     self.ecssg,
                     ec2.Port.all_traffic()
                 )
-        elif grantsg != '':
-            grantsg.add_ingress_rule(
-                self.ecssg,
-                ec2.Port.all_traffic()
-            )
         # enable log insights
         if 'Insights' in resmap['Mappings']['Resources'][res]:
             resinsights = resmap['Mappings']['Resources'][res]['Insights']
@@ -221,7 +231,7 @@ class EcsStack(core.Stack):
                 assumed_by=iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
                 description="Role for ECS Task Execution",
             )
-            pol = iam.ManagedPolicy.from_aws_managed_policy_name('AmazonECSTaskExecutionRolePolicy')
+            pol = iam.ManagedPolicy.from_aws_managed_policy_name('service-role/AmazonECSTaskExecutionRolePolicy')
             self.taskexecrole.add_managed_policy(pol)
         if 'MNGTASKEXECROLE' in resmap['Mappings']['Resources'][res]:
             for mngpol in resmap['Mappings']['Resources'][res]['MNGTASKEXECROLE']:
@@ -360,7 +370,7 @@ class EcsStack(core.Stack):
                             newpol["sid"] = police['SID']
                         self.taskrole.add_to_policy(statement=iam.PolicyStatement(**newpol))
                 if 'vol' in task:
-                    volumes = []
+                    taskvols = []
                     for vol in task['vol']:
                         if 'Name' in vol:
                             volname = vol['Name']
@@ -393,24 +403,30 @@ class EcsStack(core.Stack):
                         else:
                             transitencport = None
                         if systemid != None:
-                            volumes.append(
-                                ecs.EfsVolumeConfiguration(
-                                    file_system_id=systemid,
-                                    authorization_config=ecs.AuthorizationConfig(access_point_id=accesspoint, iam=accesspointiam),
-                                    root_directory=rootdir,
-                                    transit_encryption=transitenc,
-                                    transit_encryption_port=transitencport
+                            taskvols.append(
+                                ecs.Volume(
+                                    name=volname,
+                                    efs_volume_configuration=(
+                                        ecs.EfsVolumeConfiguration(
+                                            file_system_id=systemid,
+                                            authorization_config=ecs.AuthorizationConfig(access_point_id=accesspoint, iam=accesspointiam),
+                                            root_directory=rootdir,
+                                            transit_encryption=transitenc,
+                                            transit_encryption_port=transitencport
+                                        )
+                                    )
                                 )
                             )
                         # add options for docker and host
                 else:
-                    volumes = None
+                    taskvols = None
                 if task['Type'] == 'EC2':
                     self.task = ecs.Ec2TaskDefinition(
                         self, 
                         f"{construct_id}{taskname}", 
                         network_mode=netmode,
                         execution_role=self.taskrole,
+                        volumes=taskvols
                     )
                 if task['Type'] == 'FARGATE':
                     if 'MEM' in task:
@@ -437,6 +453,7 @@ class EcsStack(core.Stack):
                         memory_limit_mib=taskmem,
                         execution_role=self.taskexecrole,
                         task_role=self.taskrole,
+                        volumes=taskvols
                     )
                     #.node.override_logical_id(f"{self}.{construct_id}{taskname}")
                 if 'Container' in task:
@@ -516,10 +533,14 @@ class EcsStack(core.Stack):
                                     contlogstm = f"{construct_id}{taskname}{containername}{task}LogStream"
                                 if 'loggroup' in container:
                                     contloggrp = container['loggroup']
+                                    if 'loggroupname' in container:
+                                        contloggroupname = container['loggroup']
+                                    else:
+                                        contloggroupname = None
                                     contlog_group = log.LogGroup(
                                         self,
                                         f"{contloggrp}",
-                                        log_group_name=contloggrp,
+                                        log_group_name=contloggroupname,
                                         retention=contlogreten
                                     )
                                     contloggrpname = contlog_group

@@ -19,7 +19,7 @@ account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 
 class InstanceStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, userdata, ds, eipall = str, instpol = iam.PolicyStatement, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, userdata, ds, grantsg, eipall = str, instpol = iam.PolicyStatement, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -60,7 +60,13 @@ class InstanceStack(core.Stack):
                 group_id=self.ec2sg.security_group_id
             )
         # add ingress rule
-        if allowsg != '':
+        if type(allowsg) == list:
+            for each in allowsg:
+                self.ec2sg.add_ingress_rule(
+                    each,
+                    ec2.Port.all_traffic()
+                )
+        elif allowsg != '':
             self.ec2sg.add_ingress_rule(
                 allowsg,
                 ec2.Port.all_traffic()
@@ -102,7 +108,27 @@ class InstanceStack(core.Stack):
                         ec2.Peer.any_ipv6(),
                         ec2.Port.tcp(each)
                     )
-
+        if type(grantsg) == list:
+            index = 0
+            for each in grantsg:
+                ec2.SecurityGroup.from_security_group_id(
+                    self,
+                    f"{construct_id}{index}",
+                    security_group_id=each, mutable=True
+                    ).add_ingress_rule(
+                        self.ec2sg,
+                        ec2.Port.all_traffic()
+                    )
+                index = index + 1
+        elif grantsg != '':
+            ec2.SecurityGroup.from_security_group_id(
+                self,
+                f"{construct_id}0",
+                security_group_id=grantsg, mutable=True
+                ).add_ingress_rule(
+                    self.ec2sg,
+                    ec2.Port.all_traffic()
+                )
         # create a key to use from this ec2
         if 'CREATEKEY' in resmap['Mappings']['Resources'][res]:
             keyname = resmap['Mappings']['Resources'][res]['CREATEKEY']
@@ -371,17 +397,15 @@ class InstanceStack(core.Stack):
                 one_per_az=True
             )
         )
+        if userdata != '' and type(userdata) == str:
+            self.instance.add_user_data(userdata)
         if userdata == '':
             if 'USRFILE' in resmap['Mappings']['Resources'][res]:
                 userdata = resmap['Mappings']['Resources'][res]['USRFILE']
-            else:
-                userdata = None
-        if type(userdata) == str and image == 'Linux' or image == 'Windows':
-            usrdatafile = userdata
-            userdata = open(usrdatafile, "r").read()
-            #usrdata.add_commands(userdata)
-            #self.instance.instance.add_property_override("UserData", usrdata)
-            self.instance.add_user_data(userdata)
+                if type(userdata) == str and image == 'Linux' or image == 'Windows':
+                    usrdatafile = userdata
+                    userdata = open(usrdatafile, "r").read()
+                    self.instance.add_user_data(userdata)
         elif type(userdata) == list and image == 'Linux':
             usrdatalst = []
             with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:

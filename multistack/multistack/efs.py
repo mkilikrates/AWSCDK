@@ -1,4 +1,4 @@
-from ctypes.wintypes import SIZE
+#from ctypes.wintypes import SIZE
 import os
 import json
 from aws_cdk import (
@@ -14,7 +14,7 @@ from aws_cdk import (
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
 class main(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, domain = r53.PrivateHostedZone, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -92,7 +92,10 @@ class main(core.Stack):
             resname = resmap['Mappings']['Resources'][res]['NAME']
         else:
             resname = None
-        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+        if domain != '':
+            self.hz = domain
+            appdomain = domain.zone_name
+        elif 'DOMAIN' in resmap['Mappings']['Resources'][res]:
             appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
             # get hosted zone id
             self.hz = r53.HostedZone.from_lookup(
@@ -160,6 +163,10 @@ class main(core.Stack):
                 reslbkpfcc = efs.LifecyclePolicy.AFTER_90_DAYS
         else:
             reslbkpfcc = None
+        if 'rempol' in resmap['Mappings']['Resources'][res]:
+            resrempol = core.RemovalPolicy(resmap['Mappings']['Resources'][res]['rempol'])
+        else:
+            resrempol = core.RemovalPolicy.DESTROY
         if 'PERFMODE' in resmap['Mappings']['Resources'][res]:
             if resmap['Mappings']['Resources'][res]['PERFMODE'] == 'GENERAL_PURPOSE':
                 resperfmode = efs.PerformanceMode.GENERAL_PURPOSE
@@ -187,8 +194,10 @@ class main(core.Stack):
             out_of_infrequent_access_policy=efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
             performance_mode=resperfmode,
             throughput_mode=resthroughputmode,
-            provisioned_throughput_per_second=resthroughputsize
+            provisioned_throughput_per_second=resthroughputsize,
+            removal_policy=resrempol
         )
+        self.filesystem.node.add_dependency(self.efssg)
         self.filesystemaccesspoint = self.filesystem.add_access_point(
             f"{construct_id}AcessPoint"
         )

@@ -17,7 +17,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class myrds(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, domain, allowall, ipstack, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -98,7 +98,10 @@ class myrds(core.Stack):
         respol = resmap['Mappings']['Resources'][res]['RemovalPolicy']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         resintn = resmap['Mappings']['Resources'][res]['Internet']
-        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+        if domain != '':
+            self.hz = domain
+            appdomain = domain.zone_name
+        elif 'DOMAIN' in resmap['Mappings']['Resources'][res]:
             appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
             # get hosted zone id
             self.hz = r53.HostedZone.from_lookup(
@@ -159,6 +162,16 @@ class myrds(core.Stack):
                     enable_data_api=False,
                     backup_retention=core.Duration.days(1),
                 )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}ServlessCluster",
+                    value=self.rds.cluster_identifier
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}SecretName",
+                    value=self.rds.secret.secret_name
+                )
                 if appdomain != None and resname != None:
                     self.rdsclusterfqdn = r53.CnameRecord(
                         self,
@@ -198,6 +211,16 @@ class myrds(core.Stack):
                     removal_policy=core.RemovalPolicy(respol),
                     cloudwatch_logs_exports=reslog,
                     cloudwatch_logs_retention=log.RetentionDays.ONE_WEEK,
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}Cluster",
+                    value=self.rds.cluster_identifier
+                )
+                core.CfnOutput(
+                    self,
+                    f"{construct_id}SecretName",
+                    value=self.rds.secret.secret_name
                 )
                 if appdomain != None and resname != None:
                     self.rdsclusterfqdn = r53.CnameRecord(
@@ -243,6 +266,16 @@ class myrds(core.Stack):
                 removal_policy=core.RemovalPolicy(respol),
                 cloudwatch_logs_exports=reslog,
                 cloudwatch_logs_retention=log.RetentionDays.ONE_WEEK,
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}Server",
+                value=self.rds.instance_identifier
+            )
+            core.CfnOutput(
+                self,
+                f"{construct_id}SecretName",
+                value=self.rds.secret.secret_name
             )
             core.CfnOutput(
                 self,

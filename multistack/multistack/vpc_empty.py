@@ -78,7 +78,9 @@ import json
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_ram as ram,
-    core,
+    aws_route53 as r53,
+    aws_route53_targets as r53tgs,
+    core
 )
 account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
@@ -193,6 +195,26 @@ class VPC(core.Stack):
                     allow_external_principals=resallowext,
                     principals=resprinc,
                     resource_arns=arnlist
+                )
+            # associate with private hosted zone
+            if 'HZDOMAIN' in resmap['Mappings']['Resources'][res]:
+                appdomain = resmap['Mappings']['Resources'][res]['HZDOMAIN']
+                # get hosted zone id
+                self.hz = r53.PrivateHostedZone.from_lookup(
+                    self,
+                    f"{construct_id}:Domain",
+                    domain_name=appdomain,
+                    private_zone=True
+                )
+                self.hz.add_vpc(vpc=self.vpc)
+            elif 'DOMAIN' in resmap['Mappings']['Resources'][res]:
+                appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
+                # get hosted zone id
+                self.hz = r53.PrivateHostedZone(
+                    self,
+                    f"{construct_id}:Domain",
+                    zone_name = appdomain,
+                    vpc=self.vpc
                 )
             if 'MULTICIDR' in resmap['Mappings']['Resources'][res]:
                 cidrs = resmap['Mappings']['Resources'][res]['MULTICIDR']
@@ -310,6 +332,3 @@ class VPC(core.Stack):
                     # value= core.Token.as_string(self.vpc.vpc_ipv6_cidr_blocks),
                     export_name=f"{self.stack_name}:Ipv6Cidr"
                 )
-
-            
-
