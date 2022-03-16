@@ -61,7 +61,7 @@ OSearchStack = search(app, "wpsearchdomain", env=myenv, res = 'opensearch', pref
 OSearchStack.add_dependency(target=VPCStack)
 RDSStack = rds(app, "DB", env=myenv, res = 'wprdsauroramysqlsservlesscl', preflst = False, domain = VPCStack.hz, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = [InstanceStack.ec2sg])
 RDSStack.add_dependency(target=VPCStack)
-ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'wpecsfar', preflst = False, allowsg = [InstanceStack.ec2sg], contenv = '', contsecr = '', allowall = True, grantsg = [RDSStack.rdssg.security_group_id, EFSStack.efssg.security_group_id, ECacheStack.elasticachesg.security_group_id, OSearchStack.opensearchsg.security_group_id], ipstack = ipstack, srvdisc = '', asg = '', volume = [EFSStack.filesystem.file_system_id], volaccesspoint = [EFSStack.filesystemaccesspoint.access_point_id], vpc = VPCStack.vpc)
+ECStack = ecs(app, "WORDPRESS", env=myenv, res = 'wpecsfar', preflst = False, allowsg = [InstanceStack.ec2sg], contenv = [RDSStack.rdsclusterfqdn.domain_name, ECacheStack.clusterfqdn.domain_name], contsecr = [RDSStack.rds.secret], allowall = True, grantsg = [RDSStack.rdssg.security_group_id, EFSStack.efssg.security_group_id, ECacheStack.elasticachesg.security_group_id, OSearchStack.opensearchsg.security_group_id], ipstack = ipstack, srvdisc = '', asg = '', volume = [EFSStack.filesystem.file_system_id], volaccesspoint = [EFSStack.filesystemaccesspoint.access_point_id], vpc = VPCStack.vpc)
 ECStack.add_dependency(target=EFSStack)
 #ELBStack = alb(app, "WORDPRESS-ELB", env=myenv, res = 'wpfe', preflst = False, tgrtip = '', allowsg = '', allowall = True, ipstack = ipstack, tgrt = ECStack.srvc[1], vpc = VPCStack.vpc)
 

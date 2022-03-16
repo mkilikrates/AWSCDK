@@ -31,10 +31,12 @@ class EcsStack(core.Stack):
         self.vpc = vpc
         self.ipstack = ipstack
         self.srvc = []
+        if contsecr != '':
+            secman = []
+            for sec in contsecr:
+                secman.append(sec)
         if allowsg != '':
             self.allowsg = allowsg
-        if contsecr !='':
-            contsecr = ecs.Secret.from_secrets_manager(secret=contsecr)
         if preflst == True:
             # get prefix list from file to allow traffic from the office
             self.map = core.CfnMapping(
@@ -490,14 +492,43 @@ class EcsStack(core.Stack):
                             contcpu = task['CPU']
                         else:
                             contcpu = None
-                        if 'environment'in task:
-                            contenv = task['environment']
-                        elif contenv == '':
-                            contenv = None
-                        if 'secrets'in task:
-                            contsecr = task['secrets']
-                        elif contsecr == '':
-                            contsecr = None
+                        # only check up to 2 levels
+                        if 'environment'in container:
+                            ctenv = container['environment']
+                            for k,v in ctenv.items():
+                                if isinstance(v,dict):
+                                    for k1,v1 in v.items():
+                                        if k1 == 'envfromstack':
+                                            ctenv[k] = contenv[v1]
+                                elif isinstance(v,list):
+                                    for item in v:
+                                        if isinstance(item,dict):
+                                            for k2,v2 in item.items():
+                                                if k2 == 'envfromstack':
+                                                    ctenv[k][v][k1] = contenv[v2]
+                            contenviron = ctenv
+                        else:
+                            contenviron = None
+                        if 'secrets'in container:
+                            ctsecr = container['secrets']
+                            for k,v in ctsecr.items():
+                                if isinstance(v,dict):
+                                    for k1,v1 in v.items():
+                                        if k1 == 'secfromstack':
+                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1]) 
+                                        if k1 == 'secjsonfromstack':
+                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1['stackid']],v1['field']) 
+                                elif isinstance(v,list):
+                                    for item in v:
+                                        if isinstance(item,dict):
+                                            for k2,v2 in item.items():
+                                                if k2 == 'secfromstack':
+                                                    ctsecr[k][v][k1] = ecs.Secret.from_secrets_manager(secman[v2])
+                                                if k2 == 'secjsonfromstack':
+                                                    ctsecr[k][v][k1] = ecs.Secret.from_secrets_manager(secman[v2['stackid']],v2['field'])
+                            contsecrets = ctsecr
+                        else:
+                            contsecrets = None
                         if 'ContPort' in container:
                             if container['ContPort'] == 'TCP':
                                 contport = ecs.Protocol.TCP
@@ -584,8 +615,8 @@ class EcsStack(core.Stack):
                             container_name=containername,
                             command=contcommand,
                             cpu=contcpu,
-                            environment=contenv,
-                            secrets=contsecr,
+                            environment=contenviron,
+                            secrets=contsecrets,
                             logging=contlog,
                             port_mappings=contportmap
                         )

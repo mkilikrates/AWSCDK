@@ -149,6 +149,64 @@ class myrds(core.Stack):
                 clustertype = 'Cluster'
             if  clustertype == "Serverless":
                 # create RDS Cluster
+                if 'pause' in resmap['Mappings']['Resources'][res]:
+                    autopause = core.Duration.minutes(resmap['Mappings']['Resources'][res]['pause'])
+                else:
+                    autopause = core.Duration.minutes(5)
+                if 'min' in resmap['Mappings']['Resources'][res]:
+                    if resmap['Mappings']['Resources'][res] == 1:
+                        mincap = rds.AuroraCapacityUnit.ACU_1
+                    elif resmap['Mappings']['Resources'][res] == 2:
+                        mincap = rds.AuroraCapacityUnit.ACU_2
+                    elif resmap['Mappings']['Resources'][res] == 4:
+                        mincap = rds.AuroraCapacityUnit.ACU_4
+                    elif resmap['Mappings']['Resources'][res] == 8:
+                        mincap = rds.AuroraCapacityUnit.ACU_8
+                    elif resmap['Mappings']['Resources'][res] == 16:
+                        mincap = rds.AuroraCapacityUnit.ACU_16
+                    elif resmap['Mappings']['Resources'][res] == 32:
+                        mincap = rds.AuroraCapacityUnit.ACU_32
+                    elif resmap['Mappings']['Resources'][res] == 64:
+                        mincap = rds.AuroraCapacityUnit.ACU_64
+                    elif resmap['Mappings']['Resources'][res] == 128:
+                        mincap = rds.AuroraCapacityUnit.ACU_128
+                    elif resmap['Mappings']['Resources'][res] == 192:
+                        mincap = rds.AuroraCapacityUnit.ACU_192
+                    elif resmap['Mappings']['Resources'][res] == 256:
+                        mincap = rds.AuroraCapacityUnit.ACU_256
+                    elif resmap['Mappings']['Resources'][res] == 384:
+                        mincap = rds.AuroraCapacityUnit.ACU_384
+                    else:
+                        mincap = rds.AuroraCapacityUnit.ACU_1
+                else:
+                    mincap = rds.AuroraCapacityUnit.ACU_1
+                if 'max' in resmap['Mappings']['Resources'][res]:
+                    if resmap['Mappings']['Resources'][res] == 1:
+                        maxcap = rds.AuroraCapacityUnit.ACU_1
+                    elif resmap['Mappings']['Resources'][res] == 2:
+                        maxcap = rds.AuroraCapacityUnit.ACU_2
+                    elif resmap['Mappings']['Resources'][res] == 4:
+                        maxcap = rds.AuroraCapacityUnit.ACU_4
+                    elif resmap['Mappings']['Resources'][res] == 8:
+                        maxcap = rds.AuroraCapacityUnit.ACU_8
+                    elif resmap['Mappings']['Resources'][res] == 16:
+                        maxcap = rds.AuroraCapacityUnit.ACU_16
+                    elif resmap['Mappings']['Resources'][res] == 32:
+                        maxcap = rds.AuroraCapacityUnit.ACU_32
+                    elif resmap['Mappings']['Resources'][res] == 64:
+                        maxcap = rds.AuroraCapacityUnit.ACU_64
+                    elif resmap['Mappings']['Resources'][res] == 128:
+                        maxcap = rds.AuroraCapacityUnit.ACU_128
+                    elif resmap['Mappings']['Resources'][res] == 192:
+                        maxcap = rds.AuroraCapacityUnit.ACU_192
+                    elif resmap['Mappings']['Resources'][res] == 256:
+                        maxcap = rds.AuroraCapacityUnit.ACU_256
+                    elif resmap['Mappings']['Resources'][res] == 384:
+                        maxcap = rds.AuroraCapacityUnit.ACU_384
+                    else:
+                        maxcap = rds.AuroraCapacityUnit.ACU_16
+                else:
+                    maxcap = rds.AuroraCapacityUnit.ACU_16
                 self.rds = rds.ServerlessCluster(
                     self,
                     f"{construct_id}:MyRdsServlessCluster",
@@ -157,10 +215,18 @@ class myrds(core.Stack):
                     vpc=self.vpc,
                     vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
                     security_groups=[self.rdssg],
-                    credentials=rds.Credentials.from_generated_secret(resusr),
+                    credentials=rds.Credentials.from_generated_secret(
+                        username=resusr,
+                        secret_name=f"{construct_id}Secret"
+                    ),
                     deletion_protection=False,
                     enable_data_api=False,
                     backup_retention=core.Duration.days(1),
+                    scaling=rds.ServerlessScalingOptions(
+                        min_capacity=mincap,
+                        max_capacity=maxcap,
+                        auto_pause=autopause
+                    )
                 )
                 core.CfnOutput(
                     self,
@@ -205,7 +271,10 @@ class myrds(core.Stack):
                         security_groups=[self.rdssg],
                         publicly_accessible=resintn
                     ),
-                    credentials=rds.Credentials.from_generated_secret(resusr),
+                    credentials=rds.Credentials.from_generated_secret(
+                        username=resusr,
+                        secret_name=f"{construct_id}Secret"
+                    ),
                     deletion_protection=False,
                     instance_identifier_base=resname,
                     removal_policy=core.RemovalPolicy(respol),
@@ -261,7 +330,10 @@ class myrds(core.Stack):
                 vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
                 security_groups=[self.rdssg],
                 publicly_accessible=True,
-                credentials=rds.Credentials.from_generated_secret(resusr),
+                credentials=rds.Credentials.from_generated_secret(
+                    username=resusr,
+                    secret_name=f"{construct_id}Secret"
+                ),
                 deletion_protection=False,
                 removal_policy=core.RemovalPolicy(respol),
                 cloudwatch_logs_exports=reslog,
