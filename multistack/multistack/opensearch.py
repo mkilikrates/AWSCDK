@@ -102,6 +102,10 @@ class main(core.Stack):
             self.vpc = None
             self.opensearchsg = None
             ressubgrp = None
+        if 'rempol' in res:
+            rempol = core.RemovalPolicy(resmap['Mappings']['Resources'][res]['rempol'])
+        else:
+            rempol = core.RemovalPolicy.DESTROY
         # Service Link Role
         self.domain_servicelinkrole = iam.CfnServiceLinkedRole(
             self,
@@ -205,10 +209,6 @@ class main(core.Stack):
                 penwin = core.Duration.days(resencrest['penwin'])
             else:
                 penwin = core.Duration.days(7)
-            if 'rempol' in resencrest:
-                rempol = core.RemovalPolicy(resencrest['rempol'])
-            else:
-                rempol = core.RemovalPolicy.DESTROY
             encrestkey = kms.Key(
                 self,
                 f"{construct_id}Key",
@@ -250,7 +250,8 @@ class main(core.Stack):
             ebs=resebs,
             encryption_at_rest=encrestcfg,
             enforce_https=True,
-            node_to_node_encryption=True
+            node_to_node_encryption=True,
+            removal_policy=rempol
         )
         self.domain.node.add_dependency(self.domain_servicelinkrole)
         self.domain.node.add_dependency(self.opensearchsg)

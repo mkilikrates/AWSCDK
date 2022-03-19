@@ -15,6 +15,9 @@ from aws_cdk import (
     aws_autoscaling as asg,
     aws_servicediscovery as sd,
     core,
+    aws_elasticloadbalancing as clb,
+    aws_elasticloadbalancingv2 as elb,
+    aws_elasticloadbalancingv2_targets as lbtargets,
 )
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
@@ -30,7 +33,6 @@ class EcsStack(core.Stack):
         # get imported objects
         self.vpc = vpc
         self.ipstack = ipstack
-        self.srvc = []
         if contsecr != '':
             secman = []
             for sec in contsecr:
@@ -141,6 +143,10 @@ class EcsStack(core.Stack):
                     self.ecssg,
                     ec2.Port.all_traffic()
                 )
+        if 'rempol' in res:
+            rempol = core.RemovalPolicy(resmap['Mappings']['Resources'][res]['rempol'])
+        else:
+            rempol = core.RemovalPolicy.DESTROY
         # enable log insights
         if 'Insights' in resmap['Mappings']['Resources'][res]:
             resinsights = resmap['Mappings']['Resources'][res]['Insights']
@@ -168,7 +174,8 @@ class EcsStack(core.Stack):
                     f"{construct_id}:ExecLogsGroup",
                     log_group_name=execcmdloggrp,
                     retention=log.RetentionDays.ONE_WEEK,
-                    encryption_key=ecsexeclogkms
+                    encryption_key=ecsexeclogkms,
+                    removal_policy=rempol
                 ).add_stream(f"{construct_id}:ExecLogsStream", log_stream_name=execcmdlogstm)
                 execcmdcfgloggrp = self.execcmdloggrp.log_stream_name
                 if ecsexeclogkms != None:
@@ -207,7 +214,7 @@ class EcsStack(core.Stack):
             execcmdcfg = None
         # check subnet
         if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
-            ressubgrp = ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True)
+            ressubgrp = ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True).subnets
             if resmap['Mappings']['Resources'][res]['SUBNETGRP'] == 'Public':
                 respubip = True
             else:
@@ -281,13 +288,15 @@ class EcsStack(core.Stack):
                         base = cap['base']
                     else:
                         base = None
-                    capstrategy.append(ecs.CapacityProviderStrategy(
+                    capstrategy.append(ecs.CfnService.CapacityProviderStrategyItemProperty(
                         capacity_provider=cap['Provider'],
                         weight=weight,
                         base=base
                     ))
+                    lauchtype = None
         else:
             capstrategy = None
+            lauchtype = task['Type']
 
         # create cluster
         self.ecs = ecs.Cluster(
@@ -314,16 +323,28 @@ class EcsStack(core.Stack):
                 if 'NetMode' in task:
                     if task['NetMode'] == 'AWS_VPC':
                         netmode = ecs.NetworkMode.AWS_VPC
+                        srvcnetcfg = ecs.CfnService.NetworkConfigurationProperty(
+                            awsvpc_configuration=ecs.CfnService.AwsVpcConfigurationProperty(
+                                subnets=ressubgrp,
+                                assign_public_ip=respubip,
+                                security_groups=[self.ecssg]
+                            )
+                        )
                     elif task['NetMode'] == 'BRIDGE':
                         netmode = ecs.NetworkMode.BRIDGE
+                        srvcnetcfg = None
                     elif task['NetMode'] == 'HOST':
                         netmode = ecs.NetworkMode.HOST
+                        srvcnetcfg = None
                     elif task['NetMode'] == 'NAT':
                         netmode = ecs.NetworkMode.NAT
+                        srvcnetcfg = None
                     elif task['NetMode'] == 'NONE':
+                        srvcnetcfg = None
                         netmode = ecs.NetworkMode.NONE
                 else:
                     netmode = None
+                    srvcnetcfg = None
                 if 'TASKROLEARN' in task:
                     taskrolearn = task['TASKROLEARN']
                     self.taskrole = iam.Role.from_role_arn(
@@ -459,6 +480,7 @@ class EcsStack(core.Stack):
                     )
                     #.node.override_logical_id(f"{self}.{construct_id}{taskname}")
                 if 'Container' in task:
+                    containeres = []
                     cont = 0
                     for container in task['Container']:
                         if 'Name' in container:
@@ -529,25 +551,6 @@ class EcsStack(core.Stack):
                             contsecrets = ctsecr
                         else:
                             contsecrets = None
-                        if 'ContPort' in container:
-                            if container['ContPort'] == 'TCP':
-                                contport = ecs.Protocol.TCP
-                            if container['ContPort'] == 'UDP':
-                                contport = ecs.Protocol.UDP
-                        else:
-                            contport = None
-                        if 'HostPort' in container:
-                            conthostport = container['HostPort']
-                        else:
-                            conthostport = None
-                        if 'Proto' in container:
-                            contproto = container['Proto']
-                        else:
-                            contproto = None
-                        if contport != None:
-                            contportmap = ecs.PortMapping(container_port=contport, host_port=conthostport, protocol=contproto)
-                        else:
-                            contportmap = None
                         if 'logdriver'in container:
                             if container['logdriver'] == 'aws_logs':
                                 if 'logretention' in container:
@@ -607,7 +610,7 @@ class EcsStack(core.Stack):
                             ),
                         # add options for fromDockerImageAsset, from_ecr_repository, from_registry and from_tarball
                         # add container to task
-                        self.container = ecs.ContainerDefinition(
+                        containeres.append(ecs.ContainerDefinition(
                             self,
                             f"{construct_id}{containername}",
                             task_definition=self.task,
@@ -618,32 +621,10 @@ class EcsStack(core.Stack):
                             environment=contenviron,
                             secrets=contsecrets,
                             logging=contlog,
-                            port_mappings=contportmap
-                        )
-                        if srvdisc != '':
-                            if 'NSRECTYPE' in container:
-                                contnsrectype = container['NSRECTYPE']
-                            else:
-                                contnsrectype = None
-                            if 'NSTTL' in container:
-                                contnsttl = container['NSTTL']
-                            else:
-                                contnsttl = None
-                            if 'NSFail' in container:
-                                contnsfail = container['NSFail']
-                            else:
-                                contnsfail = None
-                            contmapopt = ecs.CloudMapOptions(
-                                cloud_map_namespace=srvdisc,
-                                container=self.container,
-                                container_port=contport,
-                                dns_record_type=contnsrectype,
-                                dns_ttl=contnsttl,
-                                failure_threshold=contnsfail,
-                                name=containername
-                            )
-                        else:
-                            contmapopt = None
+                            #port_mappings=contportmap
+                        ))
+                        # create mount points
+                        # add other types
                         if 'mountpoints' in container:
                             for mountpoint in container['mountpoints']:
                                 if 'path' in mountpoint:
@@ -654,43 +635,286 @@ class EcsStack(core.Stack):
                                     contro = mountpoint['ro']
                                 else:
                                     contro = False
-                                self.container.add_mount_points(
-                                    ecs.MountPoint(
-                                        container_path=contpath,
-                                        read_only=contro,
-                                        source_volume=contvolname
+                                containeres[cont].add_mount_points(
+                                            ecs.MountPoint(
+                                                container_path=contpath,
+                                                read_only=contro,
+                                                source_volume=contvolname
+                                            )
                                     )
+                        # create service and expose using ALB
+                        if 'Service' in container:
+                            self.srvc = []
+                            srvcont = 0
+                            for srvc in container['Service']:
+                                if 'Name' in srvc:
+                                    srvcname = srvc['Name']
+                                if 'Proto' in srvc:
+                                    if srvc['Proto'] == 'TCP':
+                                        contproto = ecs.Protocol.TCP
+                                    if srvc['Proto'] == 'UDP':
+                                        contproto = ecs.Protocol.UDP
+                                else:
+                                    contproto = None
+                                if 'HostPort' in srvc:
+                                    conthostport = srvc['HostPort']
+                                else:
+                                    conthostport = None
+                                if 'ContPort' in srvc:
+                                    contport = srvc['ContPort']
+                                else:
+                                    contport = None
+                                if 'Depmin' in srvc:
+                                    tgdepmin = srvc['Depmin']
+                                else:
+                                    tgdepmin = None
+                                if 'Depmax' in srvc:
+                                    tgdepmax = srvc['Depmax']
+                                else:
+                                    tgdepmax = None
+                                if 'Depcircbrkena' in srvc:
+                                    tgdepcircbrkena = srvc['Depcircbrkena']
+                                else:
+                                    tgdepcircbrkena = False
+                                if 'Depcircbrkrlbk' in srvc:
+                                    tgdepcircbrkroll = srvc['Depcircbrkrlbk']
+                                else:
+                                    tgdepcircbrkroll = False
+                                if 'Depcontype' in srvc:
+                                    tgdepcontype = ecs.CfnService.DeploymentControllerProperty(
+                                        type=srvc['Depcontype']
+                                    )
+                                else:
+                                    tgdepcontype = ecs.CfnService.DeploymentControllerProperty(
+                                        type='ECS'
+                                    )
+                                if 'SchdStrat' in srvc:
+                                    tgrschstrategy = srvc['SchdStrat']
+                                else:
+                                    tgrschstrategy = False
+                                if 'Descount' in srvc:
+                                    tgdes = srvc['Descount']
+                                else:
+                                    tgdes = None
 
-                            )
+                                if contport != None:
+                                    containeres[cont].add_port_mappings(ecs.PortMapping(container_port=contport, host_port=conthostport, protocol=contproto))
+                                    if 'Targets' in srvc:
+                                        tgrarn = []
+                                        for target in srvc['Targets']:
+                                            if 'Name' in target:
+                                                targetname = target['Name']
+                                            else:
+                                                targetname = None
+                                            if 'TGType' in target:
+                                                if target['TGType'] == 'IP':
+                                                    tgtype = elb.TargetType.IP
+                                                    tgport = contport
+                                                elif target['TGType'] == 'HOST':
+                                                    tgtype = elb.TargetType.INSTANCE
+                                                    tgport = conthostport
+                                                else:
+                                                    tgtype = elb.TargetType.IP
+                                                    tgport = contport
+                                            else:
+                                                tgtype = elb.TargetType.IP
+                                                tgport = contport
+                                            if 'LBAlgType' in target:
+                                                if target['LBAlgType'] == 'RB':
+                                                    lbalgtype = elb.TargetGroupLoadBalancingAlgorithmType.ROUND_ROBIN
+                                                elif target['LBAlgType'] == 'LEAST':
+                                                    lbalgtype = elb.TargetGroupLoadBalancingAlgorithmType.LEAST_OUTSTANDING_REQUESTS
+                                                else:
+                                                    lbalgtype = None
+                                            else:
+                                                lbalgtype = None
+                                            if 'stickduration' in target:
+                                                stickduration = core.Duration.seconds(target['stickduration'])
+                                            else:
+                                                stickduration = None
+                                            if 'cookie' in target:
+                                                cookiename = target['cookie']
+                                            else:
+                                                cookiename = None
+                                            if 'slowstart' in target:
+                                                slowstart = core.Duration.seconds(target['slowstart'])
+                                            else:
+                                                slowstart = None
+                                            if 'deregdelay' in target:
+                                                deregdelay = core.Duration.seconds(target['deregdelay'])
+                                            else:
+                                                deregdelay = None
+                                            if 'HCPORT' in target:
+                                                hcport = target['HCPORT']
+                                            else:
+                                                hcport = 'traffic-port'
+                                            if 'HCPROTO' in target:
+                                                hcproto = target['HCPROTO']
+                                                if hcproto == 'TCP':
+                                                    hcproto = elb.Protocol.TCP
+                                                elif hcproto == 'UDP':
+                                                    hcproto = elb.Protocol.UDP
+                                                elif hcproto == 'TCP_UDP':
+                                                    hcproto = elb.Protocol.TCP_UDP
+                                                elif hcproto == 'HTTP':
+                                                    hcproto = elb.Protocol.HTTP
+                                                elif hcproto == 'HTTPS':
+                                                    hcproto = elb.Protocol.HTTPS
+                                                elif hcproto == 'TLS':
+                                                    hcproto = elb.Protocol.TLS
+                                                else:
+                                                    hcproto = None
+                                                if target['HCPROTO'] == 'HTTP' or target['HCPROTO'] == 'HTTPS':
+                                                    if 'HCPath' in target:
+                                                        hcpath = target['HCPath']
+                                                    else:
+                                                        hcpath = '/'
+                                            else:
+                                                hcpath = None
+                                                hcproto = None
+                                            if 'HCGRPC' in target:
+                                                hcgrpc = target['HCGRPC']
+                                            else:
+                                                hcgrpc = None
+                                            if 'HCHTTP' in target:
+                                                hchttp = target['HCHTTP']
+                                            else:
+                                                hchttp = None
+                                            if 'HCCount' in target:
+                                                hccount = target['HCCount']
+                                            else:
+                                                hccount = 3
+                                            if 'HCUnCount' in target:
+                                                hcuncount = target['HCUnCount']
+                                            else:
+                                                hcuncount = 3
+                                            if 'HCInt' in target:
+                                                hcint = core.Duration.seconds(target['HCInt'])
+                                            else:
+                                                hcint = core.Duration.seconds(30)
+                                            if 'HCtmt' in target:
+                                                hctmt = core.Duration.seconds(target['HCtmt'])
+                                            else:
+                                                hctmt = core.Duration.seconds(10)
+                                            if 'HC' in target:
+                                                hc = target['HC']
+                                                svchc = elb.HealthCheck(
+                                                    enabled=hc,
+                                                    port=str(hcport),
+                                                    protocol=hcproto,
+                                                    healthy_grpc_codes=hcgrpc,
+                                                    healthy_http_codes=hchttp,
+                                                    healthy_threshold_count=hccount,
+                                                    unhealthy_threshold_count=hcuncount,
+                                                    interval=hcint,
+                                                    path=hcpath,
+                                                    timeout=hctmt
+                                                )
+                                            else:
+                                                svchc = None
+                                            if target['Type'] == 'alb':
+                                                tgrarn.append(elb.ApplicationTargetGroup(
+                                                    self,
+                                                    f"{construct_id}-{srvcname}-{targetname}",
+                                                    load_balancing_algorithm_type=lbalgtype,
+                                                    target_group_name=f"{construct_id}-{srvcname}-{targetname}",
+                                                    slow_start=slowstart,
+                                                    deregistration_delay=deregdelay,
+                                                    target_type=tgtype,
+                                                    port=tgport,
+                                                    stickiness_cookie_duration=stickduration,
+                                                    stickiness_cookie_name=cookiename,
+                                                    vpc=self.vpc,
+                                                    health_check=svchc
+                                                ).target_group_arn)
+                                        tgrelb = []
+                                        for tgr in tgrarn:
+                                            tgrelb.append(ecs.CfnService.LoadBalancerProperty(
+                                                container_name=containername,
+                                                container_port=contport,
+                                                target_group_arn=tgr
+                                            ))
+                                    if srvdisc != '':
+                                        if 'NSRECTYPE' in container:
+                                            contnsrectype = container['NSRECTYPE']
+                                        else:
+                                            contnsrectype = None
+                                        if 'NSTTL' in container:
+                                            contnsttl = container['NSTTL']
+                                        else:
+                                            contnsttl = None
+                                        if 'NSFail' in container:
+                                            contnsfail = container['NSFail']
+                                        else:
+                                            contnsfail = None
+                                        contmapopt = ecs.CloudMapOptions(
+                                            cloud_map_namespace=srvdisc,
+                                            container=containeres[cont],
+                                            container_port=contport,
+                                            dns_record_type=contnsrectype,
+                                            dns_ttl=contnsttl,
+                                            failure_threshold=contnsfail,
+                                            name=containername
+                                        )
+                                    else:
+                                        contmapopt = None
+                                    self.srvc.append(ecs.CfnService(
+                                        self,
+                                        f"{construct_id}{taskname}{srvcname}",
+                                        capacity_provider_strategy=capstrategy,
+                                        cluster=self.ecs.cluster_name,
+                                        deployment_configuration=ecs.CfnService.DeploymentConfigurationProperty(
+                                            deployment_circuit_breaker=ecs.CfnService.DeploymentCircuitBreakerProperty(
+                                            enable=tgdepcircbrkena,
+                                            rollback=tgdepcircbrkroll
+                                            ),
+                                            maximum_percent=tgdepmax,
+                                            minimum_healthy_percent=tgdepmin
+                                        ),
+                                        deployment_controller=tgdepcontype,
+                                        desired_count=tgdes,
+                                        enable_ecs_managed_tags=True,
+                                        enable_execute_command=execcmdcfg,
+                                        health_check_grace_period_seconds=None,
+                                        launch_type=lauchtype,
+                                        load_balancers=tgrelb,
+                                        network_configuration=srvcnetcfg,
+                                        service_name=srvcname,
+                                        task_definition=self.task.task_definition_arn
+                                    ))
+
+                                    # if task['Type'] == 'EC2':
+                                    #     self.srvc.append(ecs.Ec2Service(
+                                    #         self,
+                                    #         f"{construct_id}{taskname}{srvcname}",
+                                    #         service_name=srvcname,
+                                    #         task_definition=self.task,
+                                    #         assign_public_ip=respubip,
+                                    #         security_groups=[self.ecssg],
+                                    #         vpc_subnets=ressubgrp,
+                                    #         cluster=self.ecs,
+                                    #         capacity_provider_strategies=capstrategy,
+                                    #         enable_execute_command=execcmdcfg,
+                                    #         cloud_map_options=contmapopt
+                                    #     ))
+                                    # if task['Type'] == 'FARGATE':
+                                    #     self.srvc.append(ecs.FargateService(
+                                    #         self,
+                                    #         f"{construct_id}{taskname}{srvcname}",
+                                    #         service_name=srvcname,
+                                    #         task_definition=self.task,
+                                    #         assign_public_ip=respubip,
+                                    #         security_groups=[self.ecssg],
+                                    #         vpc_subnets=ressubgrp,
+                                    #         cluster=self.ecs,
+                                    #         capacity_provider_strategies=capstrategy,
+                                    #         enable_execute_command=execcmdcfg,
+                                    #         cloud_map_options=contmapopt,
+                                    #         platform_version=resplatform
+                                    #     ))
+                                srvcont = srvcont + 1
+                        else:
+                            contport = None
                         cont = cont + 1
-                    if task['Type'] == 'EC2':
-                        self.srvc.append(ecs.Ec2Service(
-                            self,
-                            f"{construct_id}{taskname}{containername}",
-                            service_name=containername,
-                            task_definition=self.task,
-                            assign_public_ip=respubip,
-                            security_groups=[self.ecssg],
-                            vpc_subnets=ressubgrp,
-                            cluster=self.ecs,
-                            capacity_provider_strategies=capstrategy,
-                            enable_execute_command=execcmdcfg,
-                            cloud_map_options=contmapopt
-                        ))
-                    if task['Type'] == 'FARGATE':
-                        self.srvc.append(ecs.FargateService(
-                            self,
-                            f"{construct_id}{taskname}{containername}",
-                            service_name=containername,
-                            task_definition=self.task,
-                            assign_public_ip=respubip,
-                            security_groups=[self.ecssg],
-                            vpc_subnets=ressubgrp,
-                            cluster=self.ecs,
-                            capacity_provider_strategies=capstrategy,
-                            enable_execute_command=execcmdcfg,
-                            cloud_map_options=contmapopt,
-                            platform_version=resplatform
-                        ))
                     # if 'albfromstack' in task:
                     #     self.srvc.attach_to_application_target_group()

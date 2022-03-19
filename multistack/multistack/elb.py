@@ -21,7 +21,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class alb(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, tgrtip, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, tgrtip, domain, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -34,14 +34,30 @@ class alb(core.Stack):
         elbface = resmap['Mappings']['Resources'][res]['INTERNET']
         ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
         restype = resmap['Mappings']['Resources'][res]['Type']
-        rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
-        reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
-        restgport = resmap['Mappings']['Resources'][res]['TGPORT']
-        resmon = resmap['Mappings']['Resources'][res]['MONITOR']
+        if 'CROSSAZ' in resmap['Mappings']['Resources'][res]:
+            rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
+        else:
+            rescrossaz = None
+        if 'LBPORT' in resmap['Mappings']['Resources'][res]:
+            reslbport = resmap['Mappings']['Resources'][res]['LBPORT']
+        else:
+            reslbport = None
+        if 'TGPORT' in resmap['Mappings']['Resources'][res]:
+            restgport = resmap['Mappings']['Resources'][res]['TGPORT']
+        else:
+            restgport = None
+        if 'MONITOR' in resmap['Mappings']['Resources'][res]:
+            resmon = resmap['Mappings']['Resources'][res]['MONITOR']
+        else:
+            resmon = False
         if 'CLIPRESIP' in resmap['Mappings']['Resources'][res]:
             lbpresip = resmap['Mappings']['Resources'][res]['CLIPRESIP']
         else:
             lbpresip = False
+        if 'SSL' in resmap['Mappings']['Resources'][res]:
+            appssl = resmap['Mappings']['Resources'][res]['SSL']
+        else:
+            appssl = False
         if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
             appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
             # get hosted zone id
@@ -52,7 +68,7 @@ class alb(core.Stack):
                 private_zone=False
             )
             # generate public certificate
-            if type(reslbport) == int and reslbport == 443:
+            if appssl == True or (type(reslbport) == int and reslbport == 443):
                 self.cert = acm.Certificate(
                     self,
                     f"{construct_id}:Certificate",
@@ -149,29 +165,46 @@ class alb(core.Stack):
                 value=self.elb.load_balancer_dns_name
             )
             # configure listener
-            if reslbport == 443:
-                self.elblistnrs = elb.ApplicationListener(
-                    self,
-                    f"{construct_id}:Listener_https",
-                    load_balancer=self.elb,
-                    port=reslbport,
-                    protocol=elb.ApplicationProtocol.HTTPS,
-                    certificates=[elb.ListenerCertificate.from_arn(self.cert.certificate_arn)],
-                )
-                #redir http traffic to https
-                self.elb.add_redirect(
-                    source_port=80,
-                    source_protocol=elb.ApplicationProtocol.HTTP,
-                    target_port=reslbport,
-                    target_protocol=elb.ApplicationProtocol.HTTPS
-                )
-            else:
-                self.elblistnrs = elb.ApplicationListener(
-                    f"{construct_id}:Listener_http",
-                    load_balancer=self.elb,
-                    port=reslbport,
-                    protocol=elb.ApplicationProtocol.HTTP
-                )
+            if reslbport != None:
+                if reslbport == 443:
+                    self.elblistnrs = elb.ApplicationListener(
+                        self,
+                        f"{construct_id}:Listener_https",
+                        load_balancer=self.elb,
+                        port=reslbport,
+                        protocol=elb.ApplicationProtocol.HTTPS,
+                        certificates=[elb.ListenerCertificate.from_arn(self.cert.certificate_arn)],
+                    )
+                    #redir http traffic to https
+                    self.elb.add_redirect(
+                        source_port=80,
+                        source_protocol=elb.ApplicationProtocol.HTTP,
+                        target_port=reslbport,
+                        target_protocol=elb.ApplicationProtocol.HTTPS
+                    )
+                if type(reslbport) == list:
+                    for each in reslbport:
+                        if each == 443:
+                            self.cert = acm.Certificate(
+                                self,
+                                f"{construct_id}:Certificate",
+                                domain_name=f"{appname}.{appdomain}",
+                                validation=acm.CertificateValidation.from_dns(self.hz)
+                            )
+                            #redir http traffic to https
+                            self.elb.add_redirect(
+                                source_port=80,
+                                source_protocol=elb.ApplicationProtocol.HTTP,
+                                target_port=reslbport,
+                                target_protocol=elb.ApplicationProtocol.HTTPS
+                            )
+                else:
+                    self.elblistnrs = elb.ApplicationListener(
+                        f"{construct_id}:Listener_http",
+                        load_balancer=self.elb,
+                        port=reslbport,
+                        protocol=elb.ApplicationProtocol.HTTP
+                    )
             # allow ingress access 
             if allowall == True:
                 self.elblistnrs.connections.allow_default_port_from(
@@ -480,6 +513,9 @@ class alb(core.Stack):
                     threshold=0,
                     comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
                 )
+        if appdomain == '' and domain != '':
+            self.hz = domain
+            appdomain = self.hz.zone_name
         if appdomain != '':
             # create alias record target elb
             r53.ARecord(
