@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_efs as efs,
     aws_autoscaling as asg,
     aws_servicediscovery as sd,
+    aws_secretsmanager as secretsmanager,
     core,
     aws_elasticloadbalancing as clb,
     aws_elasticloadbalancingv2 as elb,
@@ -27,7 +28,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class EcsStack(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, contenv, contsecr, volume, volaccesspoint, grantsg, srvdisc = sd, asg = asg, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, contenv, contsecr, volume, volaccesspoint, grantsg, lb, certif, srvdisc = sd, asg = asg, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # from https://github.com/aws-samples/aws-cdk-examples/blob/master/python/ecs/ecs-service-with-advanced-alb-config/app.py
         # get imported objects
@@ -36,7 +37,7 @@ class EcsStack(core.Stack):
         if contsecr != '':
             secman = []
             for sec in contsecr:
-                secman.append(sec)
+                secman.append(secretsmanager.Secret.from_secret_complete_arn(self,f"{construct_id}Sec",secret_complete_arn=sec.secret_full_arn))
         if allowsg != '':
             self.allowsg = allowsg
         if preflst == True:
@@ -169,15 +170,16 @@ class EcsStack(core.Stack):
                     execcmdlogstm = resmap['Mappings']['Resources'][res]['EXECCMDLOGSTM']
                 else:
                     execcmdlogstm = 'container-stdout'
+                    execcmdloggrp = None
                 self.execcmdloggrp = log.LogGroup(
                     self,
-                    f"{construct_id}:ExecLogsGroup",
+                    f"{execcmdloggrp}:ExecLogsGroup",
                     log_group_name=execcmdloggrp,
                     retention=log.RetentionDays.ONE_WEEK,
                     encryption_key=ecsexeclogkms,
                     removal_policy=rempol
                 ).add_stream(f"{construct_id}:ExecLogsStream", log_stream_name=execcmdlogstm)
-                execcmdcfgloggrp = self.execcmdloggrp.log_stream_name
+                execcmdcfgloggrp = self.execcmdloggrp.log_group_name
                 if ecsexeclogkms != None:
                     execcmdcfglogkms = True
                 else:
@@ -214,17 +216,20 @@ class EcsStack(core.Stack):
             execcmdcfg = None
         # check subnet
         if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
-            ressubgrp = ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True).subnets
+            ressubgrp = self.vpc.select_subnets(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'], one_per_az=True).subnet_ids
             if resmap['Mappings']['Resources'][res]['SUBNETGRP'] == 'Public':
-                respubip = True
+                respubip = 'ENABLED'
             else:
-                respubip = False
+                respubip = 'DISABLED'
             vpc = self.vpc
         else:
             vpc = None
             ressubgrp = None
         if 'PUBIP' in resmap['Mappings']['Resources'][res]:
-            respubip = resmap['Mappings']['Resources'][res]['PUBIP']
+            if resmap['Mappings']['Resources'][res]['PUBIP'] == True:
+                respubip = 'ENABLED'
+            else:
+                respubip = 'DISABLED'
         # check roles
         if 'TASKEXECROLEARN' in resmap['Mappings']['Resources'][res]:
             taskexecrolearn = resmap['Mappings']['Resources'][res]['TASKEXECROLEARN']
@@ -288,6 +293,11 @@ class EcsStack(core.Stack):
                         base = cap['base']
                     else:
                         base = None
+                    # capstrategy.append(ecs.CapacityProviderStrategy(
+                    #     capacity_provider=cap['Provider'],
+                    #     weight=weight,
+                    #     base=base
+                    # ))
                     capstrategy.append(ecs.CfnService.CapacityProviderStrategyItemProperty(
                         capacity_provider=cap['Provider'],
                         weight=weight,
@@ -323,13 +333,20 @@ class EcsStack(core.Stack):
                 if 'NetMode' in task:
                     if task['NetMode'] == 'AWS_VPC':
                         netmode = ecs.NetworkMode.AWS_VPC
-                        srvcnetcfg = ecs.CfnService.NetworkConfigurationProperty(
-                            awsvpc_configuration=ecs.CfnService.AwsVpcConfigurationProperty(
-                                subnets=ressubgrp,
-                                assign_public_ip=respubip,
-                                security_groups=[self.ecssg]
-                            )
-                        )
+                        srvcnetcfg = {
+                            "awsvpcConfiguration": {
+                                "subnets": ressubgrp,
+                                "assignPublicIp": respubip,
+                                "securityGroups": [self.ecssg.security_group_id]
+                            }
+                        }
+                        # srvcnetcfg = ecs.CfnService.NetworkConfigurationProperty(
+                        #     awsvpc_configuration=ecs.CfnService.AwsVpcConfigurationProperty(
+                        #         subnets=ressubgrp,
+                        #         assign_public_ip=respubip,
+                        #         security_groups=[self.ecssg]
+                        #     )
+                        # )
                     elif task['NetMode'] == 'BRIDGE':
                         netmode = ecs.NetworkMode.BRIDGE
                         srvcnetcfg = None
@@ -343,8 +360,8 @@ class EcsStack(core.Stack):
                         srvcnetcfg = None
                         netmode = ecs.NetworkMode.NONE
                 else:
-                    netmode = None
                     srvcnetcfg = None
+                    netmode = ecs.NetworkMode.NONE
                 if 'TASKROLEARN' in task:
                     taskrolearn = task['TASKROLEARN']
                     self.taskrole = iam.Role.from_role_arn(
@@ -537,16 +554,20 @@ class EcsStack(core.Stack):
                                 if isinstance(v,dict):
                                     for k1,v1 in v.items():
                                         if k1 == 'secfromstack':
-                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1]) 
+                                            secman[v1].secret.grant_read(self.taskexecrole)
+                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1])
                                         if k1 == 'secjsonfromstack':
-                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1['stackid']],v1['field']) 
+                                            ctsecr[k] = ecs.Secret.from_secrets_manager(secman[v1['stackid']],v1['field'])
+                                            secman[v1['stackid']].grant_read(self.taskexecrole)
                                 elif isinstance(v,list):
                                     for item in v:
                                         if isinstance(item,dict):
                                             for k2,v2 in item.items():
-                                                if k2 == 'secfromstack':
+                                                if k2 == 'secjsonfromstack':
+                                                    secman[v2['stackid']].grant_read(self.taskexecrole)
                                                     ctsecr[k][v][k1] = ecs.Secret.from_secrets_manager(secman[v2])
                                                 if k2 == 'secjsonfromstack':
+                                                    secman[v2['stackid']].grant_read(self.taskexecrole)
                                                     ctsecr[k][v][k1] = ecs.Secret.from_secrets_manager(secman[v2['stackid']],v2['field'])
                             contsecrets = ctsecr
                         else:
@@ -577,20 +598,20 @@ class EcsStack(core.Stack):
                                         log_group_name=contloggroupname,
                                         retention=contlogreten
                                     )
-                                    contloggrpname = contlog_group
+                                    contloggrpname = contlog_group.log_group_name
+
                                 else:
-                                    contloggrp = f"{construct_id}{taskname}LogGroup"
+                                    contloggrp = f"{construct_id}{taskname}{containername}LogGroup"
                                     if cont == 0:
                                         contlog_group = log.LogGroup(
                                             self,
                                             f"{contloggrp}",
-                                            log_group_name=contloggrp,
                                             retention=contlogreten
                                         )
-                                        contloggrpname = contlog_group
+                                        contloggrpname = contlog_group.log_group_name
                                 contlog = ecs.LogDrivers.aws_logs(
                                     stream_prefix=contlogstm,
-                                    log_group=contloggrpname,
+                                    log_group=contlog_group,
                                 )
                         else:
                             contlog = None
@@ -644,7 +665,6 @@ class EcsStack(core.Stack):
                                     )
                         # create service and expose using ALB
                         if 'Service' in container:
-                            self.srvc = []
                             srvcont = 0
                             for srvc in container['Service']:
                                 if 'Name' in srvc:
@@ -700,7 +720,7 @@ class EcsStack(core.Stack):
                                 if contport != None:
                                     containeres[cont].add_port_mappings(ecs.PortMapping(container_port=contport, host_port=conthostport, protocol=contproto))
                                     if 'Targets' in srvc:
-                                        tgrarn = []
+                                        svctgrp = []
                                         for target in srvc['Targets']:
                                             if 'Name' in target:
                                                 targetname = target['Name']
@@ -812,8 +832,43 @@ class EcsStack(core.Stack):
                                                 )
                                             else:
                                                 svchc = None
+                                            if 'elbfromstack' in target:
+                                                loadbalancer = lb[target['elbfromstack']]
+                                            else:
+                                                loadbalancer = None
+                                            if 'certfromstack' in target:
+                                                certificates = []
+                                                for cert in target['certfromstack']:
+                                                    certificates.append(elb.ListenerCertificate.from_arn(certif[cert]))
+                                            else:
+                                                certificates = None
+                                            if 'elblist' in target:
+                                                elblist = target['elblist']
+                                                if elblist == '443':
+                                                    elbproto = elb.Protocol.HTTPS
+                                                elif elblist == '80':
+                                                    elbproto = elb.Protocol.HTTP
+                                                else:
+                                                    if 'elbproto' in target:
+                                                        if target['elbproto'] == 'TCP':
+                                                            elbproto = elb.Protocol.TCP
+                                                        elif target['elbproto'] == 'UDP':
+                                                            elbproto = elb.Protocol.UDP
+                                                        elif target['elbproto'] == 'TLS':
+                                                            elbproto = elb.Protocol.TLS
+                                                        elif target['elbproto'] == 'TCP_UDP':
+                                                            elbproto = elb.Protocol.TCP_UDP
+                                                        else:
+                                                            elbproto = elb.Protocol.HTTP
+                                                    else:
+                                                        elbproto = elb.Protocol.HTTP
+                                            else:
+                                                elblist = 80
+                                                elbproto = elb.Protocol.HTTP
+                                            
+
                                             if target['Type'] == 'alb':
-                                                tgrarn.append(elb.ApplicationTargetGroup(
+                                                self.elbtgr = elb.ApplicationTargetGroup(
                                                     self,
                                                     f"{construct_id}-{srvcname}-{targetname}",
                                                     load_balancing_algorithm_type=lbalgtype,
@@ -826,14 +881,108 @@ class EcsStack(core.Stack):
                                                     stickiness_cookie_name=cookiename,
                                                     vpc=self.vpc,
                                                     health_check=svchc
-                                                ).target_group_arn)
-                                        tgrelb = []
-                                        for tgr in tgrarn:
-                                            tgrelb.append(ecs.CfnService.LoadBalancerProperty(
-                                                container_name=containername,
-                                                container_port=contport,
-                                                target_group_arn=tgr
-                                            ))
+                                                )
+                                                svctgrp.append(ecs.CfnService.LoadBalancerProperty(
+                                                    container_name=containername,
+                                                    container_port=contport,
+                                                    target_group_arn=self.elbtgr.target_group_arn
+                                                ))
+                                                if loadbalancer != None:
+                                                    if  type(elblist) == list:
+                                                        for each in elblist:
+                                                            if each == 443:
+                                                                self.elbtgr = elb.ApplicationListener(
+                                                                    self,
+                                                                    f"{construct_id}:Listener_https",
+                                                                    load_balancer=loadbalancer,
+                                                                    port=each,
+                                                                    protocol=elb.ApplicationProtocol.HTTPS,
+                                                                    certificates=certificates,
+                                                                    default_target_groups=[self.elbtgr]
+                                                                )
+                                                                
+                                                                # self.elbtgr.add_target(
+                                                                #     targets=ecs.EcsTarget(
+                                                                #         container_name=containername,
+                                                                #         container_port=contport,
+                                                                #         protocol=contproto,
+                                                                #         listener=self.elblistnrs
+                                                                #     )
+                                                                # )
+                                                                #redir http traffic to https
+                                                                loadbalancer.add_redirect(
+                                                                    source_port=80,
+                                                                    source_protocol=elb.ApplicationProtocol.HTTP,
+                                                                    target_port=443,
+                                                                    target_protocol=elb.ApplicationProtocol.HTTPS
+                                                                )
+                                                            else:
+                                                                self.elblistnrs = elb.ApplicationListener(
+                                                                    self,
+                                                                    f"{construct_id}:Listener_http",
+                                                                    load_balancer=loadbalancer,
+                                                                    port=each,
+                                                                    protocol=elb.ApplicationProtocol.HTTP,
+                                                                    default_target_groups=[self.elbtgr]
+                                                                )
+                                                                                                                                
+                                                                # self.elbtgr.add_target(
+                                                                #     targets=ecs.EcsTarget(
+                                                                #         container_name=containername,
+                                                                #         container_port=contport,
+                                                                #         protocol=contproto,
+                                                                #         listener=self.elblistnrs
+                                                                #     )
+                                                                # )
+                                                            self.elbtgr.node.default_child.override_logical_id(f"{construct_id}:Listener{each}")
+                                                    elif elblist == 443:
+                                                        self.elblistnrs = elb.ApplicationListener(
+                                                            self,
+                                                            f"{construct_id}:Listener_https",
+                                                            load_balancer=loadbalancer,
+                                                            port=elblist,
+                                                            protocol=elb.ApplicationProtocol.HTTPS,
+                                                            certificates=certificates,
+                                                            default_target_groups=[self.elbtgr]
+                                                        )
+                                                        #redir http traffic to https
+                                                        loadbalancer.add_redirect(
+                                                            source_port=80,
+                                                            source_protocol=elb.ApplicationProtocol.HTTP,
+                                                            target_port=443,
+                                                            target_protocol=elb.ApplicationProtocol.HTTPS
+                                                        )
+                                                        
+                                                        # self.elbtgr.add_target(
+                                                        #     targets=ecs.EcsTarget(
+                                                        #         container_name=containername,
+                                                        #         container_port=contport,
+                                                        #         protocol=contproto,
+                                                        #         listener=self.elblistnrs
+                                                        #     )
+                                                        # )
+                                                        self.elbtgr.node.default_child.override_logical_id(f"{construct_id}:Listener{elblist}")
+                                                    else:
+                                                        self.elblistnrs = elb.ApplicationListener(
+                                                            self,
+                                                            f"{construct_id}:Listener_http",
+                                                            load_balancer=loadbalancer,
+                                                            port=contport,
+                                                            protocol=elb.ApplicationProtocol.HTTP,
+                                                            default_target_groups=[self.elbtgr]
+                                                        )
+                                                        
+                                                        # self.elbtgr.add_target(
+                                                        #     targets=ecs.EcsTarget(
+                                                        #         container_name=containername,
+                                                        #         container_port=contport,
+                                                        #         protocol=contproto,
+                                                        #         listener=self.elblistnrs
+                                                        #     )
+                                                        # )
+                                                        self.elbtgr.node.default_child.override_logical_id(f"{construct_id}:Listener{elblist}")
+
+                                            self.elbtgr.node.default_child.override_logical_id(f"{targetname}")
                                     if srvdisc != '':
                                         if 'NSRECTYPE' in container:
                                             contnsrectype = container['NSRECTYPE']
@@ -858,7 +1007,7 @@ class EcsStack(core.Stack):
                                         )
                                     else:
                                         contmapopt = None
-                                    self.srvc.append(ecs.CfnService(
+                                    self.srvc = ecs.CfnService(
                                         self,
                                         f"{construct_id}{taskname}{srvcname}",
                                         capacity_provider_strategy=capstrategy,
@@ -877,14 +1026,14 @@ class EcsStack(core.Stack):
                                         enable_execute_command=execcmdcfg,
                                         health_check_grace_period_seconds=None,
                                         launch_type=lauchtype,
-                                        load_balancers=tgrelb,
+                                        load_balancers=svctgrp,
                                         network_configuration=srvcnetcfg,
                                         service_name=srvcname,
                                         task_definition=self.task.task_definition_arn
-                                    ))
-
+                                    )
+                                    self.srvc.override_logical_id(f"{construct_id}{taskname}{srvcname}")
                                     # if task['Type'] == 'EC2':
-                                    #     self.srvc.append(ecs.Ec2Service(
+                                    #     self.srvc = ecs.Ec2Service(
                                     #         self,
                                     #         f"{construct_id}{taskname}{srvcname}",
                                     #         service_name=srvcname,
@@ -896,9 +1045,10 @@ class EcsStack(core.Stack):
                                     #         capacity_provider_strategies=capstrategy,
                                     #         enable_execute_command=execcmdcfg,
                                     #         cloud_map_options=contmapopt
-                                    #     ))
+                                    #     )
+                                    #     self.srvc.node.default_child.override_logical_id(f"{construct_id}{taskname}{srvcname}")
                                     # if task['Type'] == 'FARGATE':
-                                    #     self.srvc.append(ecs.FargateService(
+                                    #     self.srvc = ecs.FargateService(
                                     #         self,
                                     #         f"{construct_id}{taskname}{srvcname}",
                                     #         service_name=srvcname,
@@ -911,10 +1061,15 @@ class EcsStack(core.Stack):
                                     #         enable_execute_command=execcmdcfg,
                                     #         cloud_map_options=contmapopt,
                                     #         platform_version=resplatform
-                                    #     ))
+                                    #     )
+                                    #     if contmapopt != None:
+                                    #         self.srvc.enable_cloud_map(contmapopt)
+                                        
+                                    #     self.srvc.node.default_child.override_logical_id(f"{construct_id}{taskname}{srvcname}")
                                 srvcont = srvcont + 1
                         else:
                             contport = None
                         cont = cont + 1
+                        self.task.node.default_child.override_logical_id(f"{taskname}")
                     # if 'albfromstack' in task:
                     #     self.srvc.attach_to_application_target_group()

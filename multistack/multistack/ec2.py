@@ -399,37 +399,36 @@ class InstanceStack(core.Stack):
         )
         if userdata != '' and type(userdata) == str:
             self.instance.add_user_data(userdata)
-        if userdata == '':
-            if 'USRFILE' in resmap['Mappings']['Resources'][res]:
-                userdata = resmap['Mappings']['Resources'][res]['USRFILE']
-                if type(userdata) == str and image == 'Linux' or image == 'Windows':
-                    usrdatafile = userdata
-                    userdata = open(usrdatafile, "r").read()
-                    self.instance.add_user_data(userdata)
-        elif type(userdata) == list and image == 'Linux':
-            usrdatalst = []
-            with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
-                for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
-                    filename = usractions['filename']
-                    execution = usractions['execution']
-                    usrdatalst.append(f"{execution} {filename}\n")
-                    usrdatalst.append(f"rm {filename}\n")
-                    zip.write(filename)
-            if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
-                customscript = Asset(
-                    self,
-                    f"{construct_id}customscript",
-                    path=f"cdk.out/{construct_id}customscript.zip"
-                )
-                customscript.grant_read(self.instance.role)
-                self.instance.add_user_data(
-                    "yum install -y unzip",
-                    f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
-                    f"unzip customscript.zip",
-                    f"rm customscript.zip\n"
-                )
-                usrdata = ''.join(usrdatalst)
-                self.instance.add_user_data(usrdata)
+        if 'USRFILE' in resmap['Mappings']['Resources'][res]:
+            userdata = resmap['Mappings']['Resources'][res]['USRFILE']
+            if type(userdata) == str and image == 'Linux' or image == 'Windows':
+                usrdatafile = userdata
+                userdata = open(usrdatafile, "r").read()
+                self.instance.add_user_data(userdata)
+            elif type(userdata) == list and image == 'Linux':
+                usrdatalst = []
+                with ZipFile(f"cdk.out/{construct_id}customscript.zip",'w') as zip:
+                    for usractions in resmap['Mappings']['Resources'][res]['USRFILE']:
+                        filename = usractions['filename']
+                        execution = usractions['execution']
+                        usrdatalst.append(f"{execution} {filename}\n")
+                        usrdatalst.append(f"rm {filename}\n")
+                        zip.write(filename)
+                if os.path.isfile(f"cdk.out/{construct_id}customscript.zip"):
+                    customscript = Asset(
+                        self,
+                        f"{construct_id}customscript",
+                        path=f"cdk.out/{construct_id}customscript.zip"
+                    )
+                    customscript.grant_read(self.instance.role)
+                    self.instance.add_user_data(
+                        "yum install -y unzip",
+                        f"aws s3 cp s3://{customscript.s3_bucket_name}/{customscript.s3_object_key} customscript.zip",
+                        f"unzip customscript.zip",
+                        f"rm customscript.zip\n"
+                    )
+                    usrdata = ''.join(usrdatalst)
+                    self.instance.add_user_data(usrdata)
         elif type(userdata) == dict and image == 'Appliance':
             if 'Secrets' in userdata:
                 data = userdata['Secrets']

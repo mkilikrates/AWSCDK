@@ -21,7 +21,7 @@ with open(resconf) as resfile:
 with open('zonemap.cfg') as zonefile:
     zonemap = json.load(zonefile)
 class alb(core.Stack):
-    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, tgrtip, domain, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
+    def __init__(self, scope: core.Construct, construct_id: str, res, preflst, allowall, ipstack, tgrtip, domain, certif, vpc = ec2.Vpc, allowsg = ec2.SecurityGroup, tgrt = asg.AutoScalingGroup, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # get imported objects
         self.vpc = vpc
@@ -30,10 +30,43 @@ class alb(core.Stack):
         tgrt = tgrt
         # get config for resource
         res = res
-        appname = resmap['Mappings']['Resources'][res]['NAME']
-        elbface = resmap['Mappings']['Resources'][res]['INTERNET']
-        ressubgrp = resmap['Mappings']['Resources'][res]['SUBNETGRP']
-        restype = resmap['Mappings']['Resources'][res]['Type']
+        if 'NAME' in resmap['Mappings']['Resources'][res]:
+            resname = resmap['Mappings']['Resources'][res]['NAME']
+        else:
+            resname = None
+        if 'APPDOMAIN' in resmap['Mappings']['Resources'][res]:
+            appdomain = resmap['Mappings']['Resources'][res]['APPDOMAIN']
+            self.hz = r53.HostedZone.from_lookup(
+                self,
+                f"{construct_id}:Domain",
+                domain_name=appdomain,
+                private_zone=False
+            )
+        else:
+            appdomain = None
+        if 'URL' in resmap['Mappings']['Resources'][res]:
+            appurl = resmap['Mappings']['Resources'][res]['URL']
+        else:
+            appurl = None
+        if 'INTERNET' in resmap['Mappings']['Resources'][res]:
+            elbface = resmap['Mappings']['Resources'][res]['INTERNET']
+            if  elbface == True:
+                if self.ipstack == 'Ipv6':
+                    lbstack = elb.IpAddressType.DUAL_STACK
+                else:
+                    lbstack = elb.IpAddressType.IPV4
+            else:
+                lbstack = elb.IpAddressType.IPV4
+        else:
+            lbstack = elb.IpAddressType.IPV4
+        if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
+            ressubgrp = ec2.SubnetSelection(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'],one_per_az=True)
+        else:
+            ressubgrp = None
+        if 'Type' in resmap['Mappings']['Resources'][res]:
+            restype = resmap['Mappings']['Resources'][res]['Type']
+        else:
+            restype = 'alb'
         if 'CROSSAZ' in resmap['Mappings']['Resources'][res]:
             rescrossaz = resmap['Mappings']['Resources'][res]['CROSSAZ']
         else:
@@ -46,6 +79,10 @@ class alb(core.Stack):
             restgport = resmap['Mappings']['Resources'][res]['TGPORT']
         else:
             restgport = None
+        if 'Idle' in resmap['Mappings']['Resources'][res]:
+            residle = resmap['Mappings']['Resources'][res]['Idle']
+        else:
+            residle = None
         if 'MONITOR' in resmap['Mappings']['Resources'][res]:
             resmon = resmap['Mappings']['Resources'][res]['MONITOR']
         else:
@@ -58,41 +95,19 @@ class alb(core.Stack):
             appssl = resmap['Mappings']['Resources'][res]['SSL']
         else:
             appssl = False
-        if 'DOMAIN' in resmap['Mappings']['Resources'][res]:
-            appdomain = resmap['Mappings']['Resources'][res]['DOMAIN']
-            # get hosted zone id
-            self.hz = r53.HostedZone.from_lookup(
-                self,
-                f"{construct_id}:Domain",
-                domain_name=appdomain,
-                private_zone=False
-            )
-            # generate public certificate
-            if appssl == True or (type(reslbport) == int and reslbport == 443):
-                self.cert = acm.Certificate(
-                    self,
-                    f"{construct_id}:Certificate",
-                    domain_name=f"{appname}.{appdomain}",
-                    validation=acm.CertificateValidation.from_dns(self.hz)
-                )
-            if type(reslbport) == list:
-                for each in reslbport:
-                    if each == 443:
-                        self.cert = acm.Certificate(
-                            self,
-                            f"{construct_id}:Certificate",
-                            domain_name=f"{appname}.{appdomain}",
-                            validation=acm.CertificateValidation.from_dns(self.hz)
-                        )
+        if 'HTTP2' in resmap['Mappings']['Resources'][res]:
+            http2 = resmap['Mappings']['Resources'][res]['HTTP2']
         else:
-            appdomain = ''
-        if elbface == True:
-            if self.ipstack == 'Ipv6':
-                lbstack = elb.IpAddressType.DUAL_STACK
-            else:
-                lbstack = elb.IpAddressType.IPV4
-        else:
-            lbstack = elb.IpAddressType.IPV4
+            http2 = False
+        # check for ssl certificate
+        if 'CERTARN' in resmap['Mappings']['Resources'][res]:
+            certificates = []
+            for cert in resmap['Mappings']['Resources'][res]['CERTARN']:
+                certificates.append(elb.ListenerCertificate.from_arn(cert))
+        elif certif != []:
+            certificates = []
+            for cert in certif:
+                certificates.append(elb.ListenerCertificate.from_arn(cert))
         if restype == 'clb':
             # create security group for LB
             self.lbsg = ec2.SecurityGroup(
@@ -111,7 +126,7 @@ class alb(core.Stack):
                 f"{construct_id}-CLB",
                 vpc=self.vpc,
                 cross_zone=rescrossaz,
-                subnet_selection=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                subnet_selection=ressubgrp,
                 internet_facing=elbface,
                 listeners=self.elblistnrs
             )
@@ -155,9 +170,12 @@ class alb(core.Stack):
                 f"{construct_id}-ALB",
                 vpc=self.vpc,
                 internet_facing=elbface,
-                ip_address_type=(lbstack),
-                vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                ip_address_type=lbstack,
+                vpc_subnets=ressubgrp,
                 security_group=self.lbsg,
+                http2_enabled=http2,
+                idle_timeout=residle,
+                load_balancer_name=resname
             )
             core.CfnOutput(
                 self,
@@ -173,7 +191,7 @@ class alb(core.Stack):
                         load_balancer=self.elb,
                         port=reslbport,
                         protocol=elb.ApplicationProtocol.HTTPS,
-                        certificates=[elb.ListenerCertificate.from_arn(self.cert.certificate_arn)],
+                        certificates=certificates,
                     )
                     #redir http traffic to https
                     self.elb.add_redirect(
@@ -185,11 +203,13 @@ class alb(core.Stack):
                 if type(reslbport) == list:
                     for each in reslbport:
                         if each == 443:
-                            self.cert = acm.Certificate(
+                            self.elblistnrs = elb.ApplicationListener(
                                 self,
-                                f"{construct_id}:Certificate",
-                                domain_name=f"{appname}.{appdomain}",
-                                validation=acm.CertificateValidation.from_dns(self.hz)
+                                f"{construct_id}:Listener_https",
+                                load_balancer=self.elb,
+                                port=each,
+                                protocol=elb.ApplicationProtocol.HTTPS,
+                                certificates=certificates,
                             )
                             #redir http traffic to https
                             self.elb.add_redirect(
@@ -291,7 +311,7 @@ class alb(core.Stack):
                             load_balancer=self.elb,
                             port=reslbport,
                             protocol=elb.Protocol('TLS'),
-                            certificates=[elb.ListenerCertificate(self.cert.certificate_arn)]
+                            certificates=certificates
                         )
                     else:
                         if 'PROTO' in resmap['Mappings']['Resources'][res]:
@@ -324,7 +344,7 @@ class alb(core.Stack):
                                 load_balancer=self.elb,
                                 port=reslbport[index],
                                 protocol=elb.Protocol('TLS'),
-                                certificates=[elb.ListenerCertificate(self.cert.certificate_arn)],
+                                certificates=certificates,
                                 default_target_groups=elb.NetworkTargetGroup(
                                     self,
                                     f"{construct_id}:My Default Fleet{index}",
@@ -449,7 +469,7 @@ class alb(core.Stack):
                         load_balancer=self.elb,
                         port=reslbport,
                         protocol=elb.Protocol.TLS,
-                        certificates=[elb.ListenerCertificate(self.cert.certificate_arn)],
+                        certificates=certificates,
                         default_target_groups=[self.tgrp]
                     )
                 else:
@@ -489,11 +509,11 @@ class alb(core.Stack):
                     acceptance_required=resaccept,
                     allowed_principals=principal
                 )
-                if appdomain != '':
+                if appdomain != None and appurl != None:
                     self.vpcendpointsrvdns = r53.VpcEndpointServiceDomainName(
                         self,
                         f"{construct_id}:VPCEndpointServiceDomain",
-                        domain_name=f"{appname}.{appdomain}",
+                        domain_name=f"{appurl}",
                         endpoint_service=self.vpcendpointsrv,
                         public_hosted_zone=self.hz
                     )
@@ -513,20 +533,19 @@ class alb(core.Stack):
                     threshold=0,
                     comparison_operator=cw.ComparisonOperator.GREATER_THAN_THRESHOLD
                 )
-        if appdomain == '' and domain != '':
+        if domain != '':
             self.hz = domain
-            appdomain = self.hz.zone_name
-        if appdomain != '':
+        if appdomain != None and appurl != None:
             # create alias record target elb
             r53.ARecord(
                 self,
                 f"{construct_id}:fqdn",
                 zone=self.hz,
-                record_name=f"{appname}.{appdomain}",
+                record_name=f"{appurl}",
                 target=r53.RecordTarget.from_alias(r53tgs.LoadBalancerTarget(self.elb))
             )
             self.elbdns = core.CfnOutput(
                 self,
                 f"{construct_id}:APP DNS",
-                value=f"{appname}.{appdomain}"
+                value=f"{appurl}"
             )
