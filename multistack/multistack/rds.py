@@ -7,6 +7,8 @@ from aws_cdk import (
     aws_ssm as ssm,
     aws_logs as log,
     aws_route53 as r53,
+    aws_lambda as lambda_,
+    aws_lambda_python as lpython,
     core,
 )
 account = core.Aws.ACCOUNT_ID
@@ -369,3 +371,78 @@ class myrds(core.Stack):
                     f"{construct_id}ClusterFQDN",
                     value=f"{resname}.{appdomain}"
                 )
+        if 'CREATEMYSQLDBNAME' in resmap['Mappings']['Resources'][res]:
+            database = resmap['Mappings']['Resources'][res]['CREATEMYSQLDBNAME']
+            self.mylambdapolicy = iam.PolicyStatement(
+                actions=[
+                    "ec2:ReleaseAddress",
+                    "ec2:DescribeAddresses",
+                    "ec2:AllocateAddress",
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:DescribeLogGroups",
+                    "logs:DescribeLogStreams",
+                    "logs:PutLogEvents"
+                ],
+                resources=["*"],
+                effect=iam.Effect.ALLOW
+            )
+            self.mylambdarole = iam.Role(
+                self,
+                "LambdaRole",
+                assumed_by=iam.ServicePrincipal(
+                    'lambda.amazonaws.com'
+                ),
+                description=(
+                    'Role for Lambda to create a mysql database as Custom Resources in CloudFormation'
+                )
+            )
+            #self.mylambdarole.add_to_policy(self.mylambdapolicy)
+            self.mylambdarole.add_to_principal_policy(statement=self.mylambdapolicy)
+            self.rds.secret.grant_read(self.mylambdarole)
+            pol = iam.ManagedPolicy.from_aws_managed_policy_name('service-role/AWSLambdaVPCAccessExecutionRole')
+            self.mylambdarole.add_managed_policy(pol)
+
+            # create security group for lambda
+            lambdasg = ec2.SecurityGroup(
+                self,
+                f"{construct_id}:RdsLambdaSG",
+                allow_all_outbound=True,
+                vpc=self.vpc
+            )
+            # Create Lambda Function
+            self.mylambda = lpython.PythonFunction(
+                self,
+                f"{construct_id}:Lambda",
+                handler="lambda_handler",
+                timeout=core.Duration.seconds(180),
+                runtime=lambda_.Runtime.PYTHON_3_8,
+                description="Lambda to manage Elastic Ips as Custom Resources in CloudFormation",
+                entry="lambda/createmysqldatabase/",
+                role=(self.mylambdarole),
+                log_retention=log.RetentionDays.ONE_WEEK,
+                vpc=self.vpc,
+                vpc_subnets=ec2.SubnetSelection(subnet_group_name=ressubgrp,one_per_az=True),
+                security_groups=[lambdasg]
+            )
+            self.rdssg.add_ingress_rule(
+                lambdasg,
+                ec2.Port.all_traffic()
+            )
+            self.mycustomresource = core.CustomResource(
+                self,
+                f"{construct_id}:CustomResource",
+                service_token=self.mylambda.function_arn,properties=[
+                    {
+                        "SecretName" : self.rds.secret.secret_full_arn,
+                        "DataBase": database
+                    }
+                ]
+            )
+            self.ip = core.CfnOutput(
+                self,
+                f"{construct_id}:PublicIp",
+                value=self.mycustomresource.get_att_string("PublicIp"),
+                export_name=f"{construct_id}:PublicIp"
+            )
+

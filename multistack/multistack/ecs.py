@@ -533,6 +533,10 @@ class EcsStack(core.Stack):
                             contcpu = task['CPU']
                         else:
                             contcpu = None
+                        if 'Linuxpar'in task:
+                            contlinuxpar = task['Linuxpar']
+                        else:
+                            contlinuxpar = None
                         # only check up to 2 levels
                         if 'environment'in container:
                             ctenv = container['environment']
@@ -644,7 +648,7 @@ class EcsStack(core.Stack):
                             environment=contenviron,
                             secrets=contsecrets,
                             logging=contlog,
-                            #port_mappings=contportmap
+                            linux_parameters=contlinuxpar,
                         ))
                         # create mount points
                         # add other types
