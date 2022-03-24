@@ -170,15 +170,14 @@ class EcsStack(core.Stack):
                     execcmdlogstm = resmap['Mappings']['Resources'][res]['EXECCMDLOGSTM']
                 else:
                     execcmdlogstm = 'container-stdout'
-                    execcmdloggrp = None
                 self.execcmdloggrp = log.LogGroup(
                     self,
                     f"{execcmdloggrp}:ExecLogsGroup",
-                    log_group_name=execcmdloggrp,
                     retention=log.RetentionDays.ONE_WEEK,
                     encryption_key=ecsexeclogkms,
                     removal_policy=rempol
-                ).add_stream(f"{construct_id}:ExecLogsStream", log_stream_name=execcmdlogstm)
+                )
+                self.execcmdloggrp.add_stream(f"{construct_id}:ExecLogsStream", log_stream_name=execcmdlogstm)
                 execcmdcfgloggrp = self.execcmdloggrp.log_group_name
                 if ecsexeclogkms != None:
                     execcmdcfglogkms = True
@@ -201,19 +200,21 @@ class EcsStack(core.Stack):
                 execcmds3log = None
                 execcmds3logprf = None
                 execcmdcfgs3kms = False
-            execcmdcfg = ecs.CfnCluster.ExecuteCommandConfigurationProperty(
-                kms_key_id=ecsexeclogkms,
-                logging='OVERRIDE',
-                log_configuration=ecs.CfnCluster.ExecuteCommandLogConfigurationProperty(
-                    cloud_watch_log_group_name=execcmdcfgloggrp,
+            execcmdcfg = ecs.ExecuteCommandConfiguration(
+                kms_key=ecsexeclogkms,
+                logging=ecs.ExecuteCommandLogging.OVERRIDE,
+                log_configuration=ecs.ExecuteCommandLogConfiguration(
+                    cloud_watch_log_group=self.execcmdloggrp,
                     cloud_watch_encryption_enabled=execcmdcfglogkms,
-                    s3_bucket_name=execcmds3log,
+                    s3_bucket=execcmds3log,
                     s3_key_prefix=execcmds3logprf,
                     s3_encryption_enabled=execcmdcfgs3kms
                 )
             )
+            execcmdcfgbol = True
         else:
             execcmdcfg = None
+            execcmdcfgbol = False
         # check subnet
         if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
             ressubgrp = self.vpc.select_subnets(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'], one_per_az=True).subnet_ids
@@ -315,6 +316,7 @@ class EcsStack(core.Stack):
             cluster_name=resname,
             vpc=vpc,
             container_insights=resinsights,
+            execute_command_configuration=execcmdcfg
         )
         # add ec2 capacity from auto scale group
         if asg != '':
@@ -1023,7 +1025,7 @@ class EcsStack(core.Stack):
                                         deployment_controller=tgdepcontype,
                                         desired_count=tgdes,
                                         enable_ecs_managed_tags=True,
-                                        enable_execute_command=execcmdcfg,
+                                        enable_execute_command=execcmdcfgbol,
                                         health_check_grace_period_seconds=None,
                                         launch_type=lauchtype,
                                         load_balancers=svctgrp,
