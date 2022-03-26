@@ -415,7 +415,7 @@ class myrds(core.Stack):
                 self,
                 f"{construct_id}:Lambda",
                 handler="lambda_handler",
-                timeout=core.Duration.seconds(180),
+                timeout=core.Duration.seconds(90),
                 runtime=lambda_.Runtime.PYTHON_3_8,
                 description="Lambda to manage Elastic Ips as Custom Resources in CloudFormation",
                 entry="lambda/createmysqldatabase/",
@@ -439,10 +439,4 @@ class myrds(core.Stack):
                     }
                 ]
             )
-            self.ip = core.CfnOutput(
-                self,
-                f"{construct_id}:PublicIp",
-                value=self.mycustomresource.get_att_string("PublicIp"),
-                export_name=f"{construct_id}:PublicIp"
-            )
-
+            self.mycustomresource.node.add_dependency(self.rds)

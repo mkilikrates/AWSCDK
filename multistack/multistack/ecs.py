@@ -19,6 +19,7 @@ from aws_cdk import (
     aws_elasticloadbalancing as clb,
     aws_elasticloadbalancingv2 as elb,
     aws_elasticloadbalancingv2_targets as lbtargets,
+    aws_applicationautoscaling as appsg
 )
 account = core.Aws.ACCOUNT_ID
 region = core.Aws.REGION
@@ -706,6 +707,10 @@ class EcsStack(core.Stack):
                                     tgdepcircbrkroll = srvc['Depcircbrkrlbk']
                                 else:
                                     tgdepcircbrkroll = False
+                                if 'Maxcount' in srvc:
+                                    tgmax = srvc['Maxcount']
+                                else:
+                                    tgmax = None
                                 if 'Depcontype' in srvc:
                                     tgdepcontype = ecs.CfnService.DeploymentControllerProperty(
                                         type=srvc['Depcontype']
@@ -722,9 +727,32 @@ class EcsStack(core.Stack):
                                     tgdes = srvc['Descount']
                                 else:
                                     tgdes = None
-
                                 if contport != None:
                                     containeres[cont].add_port_mappings(ecs.PortMapping(container_port=contport, host_port=conthostport, protocol=contproto))
+                                    if srvdisc != '':
+                                        if 'NSRECTYPE' in container:
+                                            contnsrectype = container['NSRECTYPE']
+                                        else:
+                                            contnsrectype = None
+                                        if 'NSTTL' in container:
+                                            contnsttl = container['NSTTL']
+                                        else:
+                                            contnsttl = None
+                                        if 'NSFail' in container:
+                                            contnsfail = container['NSFail']
+                                        else:
+                                            contnsfail = None
+                                        contmapopt = ecs.CloudMapOptions(
+                                            cloud_map_namespace=srvdisc,
+                                            container=containeres[cont],
+                                            container_port=contport,
+                                            dns_record_type=contnsrectype,
+                                            dns_ttl=contnsttl,
+                                            failure_threshold=contnsfail,
+                                            name=containername
+                                        )
+                                    else:
+                                        contmapopt = None
                                     if 'Targets' in srvc:
                                         svctgrp = []
                                         for target in srvc['Targets']:
@@ -871,8 +899,6 @@ class EcsStack(core.Stack):
                                             else:
                                                 elblist = 80
                                                 elbproto = elb.Protocol.HTTP
-                                            
-
                                             if target['Type'] == 'alb':
                                                 self.elbtgr = elb.ApplicationTargetGroup(
                                                     self,
@@ -894,6 +920,47 @@ class EcsStack(core.Stack):
                                                     target_group_arn=self.elbtgr.target_group_arn
                                                 ))
                                                 if loadbalancer != None:
+                                                    if 'Metrics' in target:
+                                                        tgscale = appsg.ScalableTarget(
+                                                            self,
+                                                            f"{srvcname}ScaleTrg{targetname}",
+                                                            max_capacity=tgmax,
+                                                            min_capacity=tgdepmin,
+                                                            service_namespace=appsg.ServiceNamespace.ECS,
+                                                            scalable_dimension="ecs:service:DesiredCount",
+                                                            resource_id=f"service/{self.ecs.cluster_name}/{srvcname}"
+                                                        )
+                                                        for metric in target['Metrics']:
+                                                            if 'TargValue' in metric:
+                                                                metrictargval = metric['TargValue']
+                                                            else:
+                                                                metrictargval = None
+                                                            if 'ScaleinCool' in metric:
+                                                                scalecoolin = metric['ScaleinCool']
+                                                            else:
+                                                                scalecoolin = None
+                                                            if 'ScaleoutCool' in metric:
+                                                                scaleoutcool = metric['ScaleoutCool']
+                                                            else:
+                                                                scaleoutcool = None
+                                                            if metric['Name'] == 'RequestCountPerTarget':
+                                                                tgscale.scale_to_track_metric(
+                                                                    id=f"{srvcname}RequestCountPerTarget",
+                                                                    predefined_metric=appsg.PredefinedMetric.ALB_REQUEST_COUNT_PER_TARGET,
+                                                                    resource_label= f"{loadbalancer.load_balancer_full_name}/{self.elbtgr.target_group_full_name}",
+                                                                    target_value= metrictargval,
+                                                                    scale_in_cooldown= core.Duration.seconds(scalecoolin),
+                                                                    scale_out_cooldown= core.Duration.seconds(scaleoutcool)
+                                                                )
+                                                            if metric['Name'] == 'TargetResponseTime':
+                                                                tgscale.scale_to_track_metric(
+                                                                    id=f"{srvcname}TargetResponseTime",
+                                                                    custom_metric=loadbalancer.metric_target_response_time(),
+                                                                    resource_label= f"{loadbalancer.load_balancer_full_name}/{self.elbtgr.target_group_full_name}",
+                                                                    target_value= metrictargval,
+                                                                    scale_in_cooldown= core.Duration.seconds(scalecoolin),
+                                                                    scale_out_cooldown= core.Duration.seconds(scaleoutcool)
+                                                                )
                                                     if  type(elblist) == list:
                                                         for each in elblist:
                                                             if each == 443:
@@ -906,7 +973,6 @@ class EcsStack(core.Stack):
                                                                     certificates=certificates,
                                                                     default_target_groups=[self.elbtgr]
                                                                 )
-                                                                
                                                                 # self.elbtgr.add_target(
                                                                 #     targets=ecs.EcsTarget(
                                                                 #         container_name=containername,
@@ -987,32 +1053,7 @@ class EcsStack(core.Stack):
                                                         #     )
                                                         # )
                                                         self.elbtgr.node.default_child.override_logical_id(f"{construct_id}:Listener{elblist}")
-
                                             self.elbtgr.node.default_child.override_logical_id(f"{targetname}")
-                                    if srvdisc != '':
-                                        if 'NSRECTYPE' in container:
-                                            contnsrectype = container['NSRECTYPE']
-                                        else:
-                                            contnsrectype = None
-                                        if 'NSTTL' in container:
-                                            contnsttl = container['NSTTL']
-                                        else:
-                                            contnsttl = None
-                                        if 'NSFail' in container:
-                                            contnsfail = container['NSFail']
-                                        else:
-                                            contnsfail = None
-                                        contmapopt = ecs.CloudMapOptions(
-                                            cloud_map_namespace=srvdisc,
-                                            container=containeres[cont],
-                                            container_port=contport,
-                                            dns_record_type=contnsrectype,
-                                            dns_ttl=contnsttl,
-                                            failure_threshold=contnsfail,
-                                            name=containername
-                                        )
-                                    else:
-                                        contmapopt = None
                                     self.srvc = ecs.CfnService(
                                         self,
                                         f"{construct_id}{taskname}{srvcname}",
@@ -1037,6 +1078,7 @@ class EcsStack(core.Stack):
                                         service_name=srvcname,
                                         task_definition=self.task.task_definition_arn
                                     )
+                                    tgscale.node.add_dependency(self.srvc)
                                     self.srvc.override_logical_id(f"{construct_id}{taskname}{srvcname}")
                                     # if task['Type'] == 'EC2':
                                     #     self.srvc = ecs.Ec2Service(
