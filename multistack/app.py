@@ -55,7 +55,7 @@ VpcEndpointsStack = vpce(app, "WP-VPCENDPOINTS", env=myenv, res = 'WPEndpoints',
 VpcEndpointsStack.add_dependency(target=VPCStack)
 EFSStack = efs(app, "EFS", env=myenv, res = 'wpefs', preflst = False, allowsg = '', domain = VPCStack.hz, allowall = True, ipstack = ipstack, vpc = VPCStack.vpc)
 EFSStack.add_dependency(target=VPCStack)
-usrdata = f"mkdir -p /mnt/efs; mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport {EFSStack.efsfqdn.domain_name}:/ /mnt/efs"
+usrdata = f"mkdir -p /mnt/efs; mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport {EFSStack.efsfqdn.domain_name}:/ /mnt/efs; echo \"{EFSStack.efsfqdn.domain_name}:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport,_netdev 0 0\" >>/etc/fstab"
 InstanceStack = instance(app, "BastionHost", env=myenv, res = 'bastion', preflst = True, allowsg = '', grantsg = [EFSStack.efssg.security_group_id], instpol = '', userdata = usrdata, eipall = '', allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, ds = '')
 InstanceStack.add_dependency(target=EFSStack)
 RDSStack = rds(app, "MYSQL", env=myenv, res = 'wprdsauroramysqlsservlesscl', preflst = False, domain = VPCStack.hz, allowall = False, ipstack = ipstack, vpc = VPCStack.vpc, allowsg = [InstanceStack.ec2sg])
@@ -65,7 +65,7 @@ ECacheStack.add_dependency(target=VPCStack)
 OSearchStack = search(app, "searchdomain", env=myenv, res = 'opensearch', preflst = False, domain = VPCStack.hz, allowsg = [InstanceStack.ec2sg], allowall = False, maxaz = 3, ipstack = ipstack, vpc = VPCStack.vpc)
 OSearchStack.add_dependency(target=VPCStack)
 CERTStack = cert(app, "CERTIFICATE", env=myenv, res = 'wpcert', domain = '', san = [], validation = '', hz = '')
-ELBStack = alb(app, "ELBPUB", env=myenv, res = 'wpfe', preflst = False, tgrtip = '', allowsg = '', allowall = [80,443], ipstack = ipstack, tgrt = '', domain = '', certif = [] ,vpc = VPCStack.vpc)
+ELBStack = alb(app, "ELBPUB", env=myenv, res = 'wpfe', preflst = True, tgrtip = '', allowsg = '', allowall = '', ipstack = ipstack, tgrt = '', domain = '', certif = [] ,vpc = VPCStack.vpc)
 ELBStack.add_dependency(target=CERTStack)
 ELBStack2 = alb(app, "ELBADMIN", env=myenv, res = 'wpbe', preflst = False, tgrtip = '', allowsg = InstanceStack.ec2sg, allowall = '', ipstack = ipstack, tgrt = '', certif = [], domain = VPCStack.hz, vpc = VPCStack.vpc)
 ECStack = ecs(app, "ECS", env=myenv, res = 'wpecsfar', preflst = False, allowsg = [InstanceStack.ec2sg, ELBStack.lbsg, ELBStack2.lbsg], contenv = [RDSStack.rdsclusterfqdn.domain_name, ECacheStack.clusterfqdn.domain_name], contsecr = [RDSStack.rds.secret], allowall = False, grantsg = [RDSStack.rdssg.security_group_id, EFSStack.efssg.security_group_id, ECacheStack.elasticachesg.security_group_id, OSearchStack.opensearchsg.security_group_id], ipstack = ipstack, srvdisc = '', asg = '', volume = [EFSStack.filesystem.file_system_id], volaccesspoint = [EFSStack.filesystemaccesspoint.access_point_id], lb = [ELBStack.elb, ELBStack2.elb], certif = [CERTStack.cert.certificate_arn], vpc = VPCStack.vpc)

@@ -165,6 +165,18 @@ class EcsStack(core.Stack):
         else:
             ecsexeclogkms = None
         if 'EXECCMDLOGGRP' in resmap['Mappings']['Resources'][res] or 'EXECCMDS3LOG' in resmap['Mappings']['Resources'][res]:
+            # IAM permissions required for ECS Exec
+            self.ecsexecpolicy = iam.PolicyStatement(
+                actions=[
+                    "ssmmessages:CreateControlChannel",
+                    "ssmmessages:CreateDataChannel",
+                    "ssmmessages:OpenControlChannel",
+                    "ssmmessages:OpenDataChannel"
+                ],
+                effect=iam.Effect.ALLOW,
+            )
+            # Add all resources to this policy document
+            self.ecsexecpolicy.add_all_resources()
             if 'EXECCMDLOGGRP' in resmap['Mappings']['Resources'][res]:
                 execcmdloggrp = resmap['Mappings']['Resources'][res]['EXECCMDLOGGRP']
                 if 'EXECCMDLOGSTM' in resmap['Mappings']['Resources'][res]:
@@ -383,6 +395,8 @@ class EcsStack(core.Stack):
                     for mngpol in task['MNGTASKROLE']:
                         pol = iam.ManagedPolicy.from_aws_managed_policy_name(mngpol)
                         self.taskrole.add_managed_policy(pol)
+                if execcmdcfgbol == True:
+                    self.taskrole.add_to_policy(self.ecsexecpolicy)
                 if 'TASKROLE' in task:
                     roles = task['TASKROLE']
                     for police in roles:

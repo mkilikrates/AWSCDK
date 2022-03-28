@@ -225,24 +225,24 @@ class alb(core.Stack):
                         port=reslbport,
                         protocol=elb.ApplicationProtocol.HTTP
                     )
-            # allow ingress access 
-            if allowall == True:
-                self.elblistnrs.connections.allow_default_port_from(
-                other=ec2.Peer.any_ipv4(),
-                description="Allow from anyone on LB port"
-                )
-                if self.ipstack == 'Ipv6':
+                # allow ingress access 
+                if allowall == True:
                     self.elblistnrs.connections.allow_default_port_from(
-                        other=ec2.Peer.any_ipv6(),
-                        description="Allow from anyone on LB port"
+                    other=ec2.Peer.any_ipv4(),
+                    description="Allow from anyone on LB port"
                     )
-            if preflst == True:
-                # get prefix list from file to allow traffic from the office
-                srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
-                self.elblistnrs.connections.allow_default_port_from(
-                    other=ec2.Peer.prefix_list(srcprefix),
-                    description="Allow from prefix list on LB port"
-                )
+                    if self.ipstack == 'Ipv6':
+                        self.elblistnrs.connections.allow_default_port_from(
+                            other=ec2.Peer.any_ipv6(),
+                            description="Allow from anyone on LB port"
+                        )
+                if preflst == True:
+                    # get prefix list from file to allow traffic from the office
+                    srcprefix = zonemap['Mappings']['RegionMap'][region]['PREFIXLIST']        
+                    self.elblistnrs.connections.allow_default_port_from(
+                        other=ec2.Peer.prefix_list(srcprefix),
+                        description="Allow from prefix list on LB port"
+                    )
             # allow egress access to target
             if tgrt != '':
                 self.tgrp = elb.ApplicationTargetGroup(
