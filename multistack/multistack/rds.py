@@ -373,20 +373,6 @@ class myrds(core.Stack):
                 )
         if 'CREATEMYSQLDBNAME' in resmap['Mappings']['Resources'][res]:
             database = resmap['Mappings']['Resources'][res]['CREATEMYSQLDBNAME']
-            self.mylambdapolicy = iam.PolicyStatement(
-                actions=[
-                    "ec2:ReleaseAddress",
-                    "ec2:DescribeAddresses",
-                    "ec2:AllocateAddress",
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:DescribeLogGroups",
-                    "logs:DescribeLogStreams",
-                    "logs:PutLogEvents"
-                ],
-                resources=["*"],
-                effect=iam.Effect.ALLOW
-            )
             self.mylambdarole = iam.Role(
                 self,
                 "LambdaRole",
@@ -397,8 +383,6 @@ class myrds(core.Stack):
                     'Role for Lambda to create a mysql database as Custom Resources in CloudFormation'
                 )
             )
-            #self.mylambdarole.add_to_policy(self.mylambdapolicy)
-            self.mylambdarole.add_to_principal_policy(statement=self.mylambdapolicy)
             self.rds.secret.grant_read(self.mylambdarole)
             pol = iam.ManagedPolicy.from_aws_managed_policy_name('service-role/AWSLambdaVPCAccessExecutionRole')
             self.mylambdarole.add_managed_policy(pol)

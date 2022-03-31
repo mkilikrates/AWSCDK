@@ -228,22 +228,6 @@ class EcsStack(core.Stack):
         else:
             execcmdcfg = None
             execcmdcfgbol = False
-        # check subnet
-        if 'SUBNETGRP' in resmap['Mappings']['Resources'][res]:
-            ressubgrp = self.vpc.select_subnets(subnet_group_name=resmap['Mappings']['Resources'][res]['SUBNETGRP'], one_per_az=True).subnet_ids
-            if resmap['Mappings']['Resources'][res]['SUBNETGRP'] == 'Public':
-                respubip = 'ENABLED'
-            else:
-                respubip = 'DISABLED'
-            vpc = self.vpc
-        else:
-            vpc = None
-            ressubgrp = None
-        if 'PUBIP' in resmap['Mappings']['Resources'][res]:
-            if resmap['Mappings']['Resources'][res]['PUBIP'] == True:
-                respubip = 'ENABLED'
-            else:
-                respubip = 'DISABLED'
         # check roles
         if 'TASKEXECROLEARN' in resmap['Mappings']['Resources'][res]:
             taskexecrolearn = resmap['Mappings']['Resources'][res]['TASKEXECROLEARN']
@@ -345,6 +329,22 @@ class EcsStack(core.Stack):
         if 'TASK' in resmap['Mappings']['Resources'][res]:
             for task in resmap['Mappings']['Resources'][res]['TASK']:
                 taskname = task['Name']
+                # check subnet
+                if 'SUBNETGRP' in task:
+                    ressubgrp = self.vpc.select_subnets(subnet_group_name=task['SUBNETGRP'], one_per_az=True).subnet_ids
+                    if task['SUBNETGRP'] == 'Public':
+                        respubip = 'ENABLED'
+                    else:
+                        respubip = 'DISABLED'
+                    vpc = self.vpc
+                else:
+                    vpc = None
+                    ressubgrp = None
+                if 'PUBIP' in task:
+                    if task['PUBIP'] == True:
+                        respubip = 'ENABLED'
+                    else:
+                        respubip = 'DISABLED'
                 if 'NetMode' in task:
                     if task['NetMode'] == 'AWS_VPC':
                         netmode = ecs.NetworkMode.AWS_VPC
@@ -544,7 +544,7 @@ class EcsStack(core.Stack):
                             contcommand = container['Command']
                         else:
                             contcommand = None
-                        if 'CPU'in task:
+                        if 'CPU'in container:
                             contcpu = task['CPU']
                         else:
                             contcpu = None
@@ -646,10 +646,10 @@ class EcsStack(core.Stack):
                                 ignore_mode=imageignoremode
                             )
                         elif 'imagefromregistry' in container:
+                            regstrycred = None
                             imageregistry = container['imagefromregistry']
-                            image=ecs.ContainerImage.from_registry(
-                                imageregistry
-                            ),
+                            image=ecs.ContainerImage.from_registry(name=imageregistry, credentials=regstrycred)
+                        # add option for credentials
                         # add options for fromDockerImageAsset, from_ecr_repository, from_registry and from_tarball
                         # add container to task
                         containeres.append(ecs.ContainerDefinition(

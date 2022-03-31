@@ -62,8 +62,12 @@ RUN set -ex; \
 			| awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
 	)"; \
 	apk add --virtual .wordpress-phpexts-rundeps $runDeps; \
-	apk del .build-deps
-
+	apk del .build-deps; \
+    sed -i -e "s/;request_terminate_timeout\s*=[^\n]*/request_terminate_timeout = 300/g" /usr/local/etc/php-fpm.d/www.conf; \
+    sed -i -e "s/;pm.max_children\s*=[^\n]*/pm.max_children = 45/g" /usr/local/etc/php-fpm.d/www.conf; \
+    sed -i -e "s/;pm.start_servers\s*=[^\n]*/pm.start_servers = 15/g" /usr/local/etc/php-fpm.d/www.conf; \
+    sed -i -e "s/;pm.min_spare_servers\s*=[^\n]*/pm.min_spare_servers = 15/g" /usr/local/etc/php-fpm.d/www.conf; \
+    sed -i -e "s/;pm.max_spare_servers\s*=[^\n]*/pm.max_spare_servers = 30/g" /usr/local/etc/php-fpm.d/www.conf
 
 # https://make.wordpress.org/cli/2018/05/31/gpg-signature-change/
 # pub   rsa2048 2018-05-31 [SC]
@@ -74,7 +78,10 @@ RUN set -ex; \
 RUN curl https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.4/latest-64bit-X86 -o AmazonElastiCacheClusterClient-PHP74-64bit-libmemcached-1.0.18.tar.gz && \
    tar -zxvf AmazonElastiCacheClusterClient-PHP74-64bit-libmemcached-1.0.18.tar.gz && \
    cp amazon-elasticache-cluster-client.so /usr/local/lib/php/extensions/no-debug-non-zts-20190902/ && \
-   echo 'extension=amazon-elasticache-cluster-client.so' > /usr/local/etc/php/conf.d/docker-php-ext-memcached.ini
+   echo 'extension=amazon-elasticache-cluster-client.so' > /usr/local/etc/php/conf.d/docker-php-ext-memcached.ini && \
+   curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+   chmod +x wp-cli.phar && \
+   mv wp-cli.phar /usr/local/bin/wp
 
 COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
